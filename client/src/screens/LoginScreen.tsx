@@ -1,0 +1,393 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { observer } from 'mobx-react';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import * as Google from 'expo-auth-session/providers/google';
+import { runInAction } from 'mobx';
+import { theme } from '../theme';
+import { authViewModel } from '../viewmodels/authViewModel';
+import InputField from '../components/InputField';
+import GoogleButton from '../components/GoogleButton';
+import MessageDialog from '../components/MessageDialog';
+
+// Define the navigation prop type
+type RootStackParamList = {
+  Login: undefined;
+  Register: undefined;
+  Home: undefined;
+};
+
+type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
+
+const LoginScreen = observer(() => {
+  const navigation = useNavigation<LoginScreenNavigationProp>();
+  
+  // Form state
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  
+  // Form validation tracking
+  const [touched, setTouched] = useState({
+    email: false,
+    password: false,
+  });
+
+  // Dialog state
+  const [dialogVisible, setDialogVisible] = useState(false);
+  const [dialogProps, setDialogProps] = useState({
+    type: 'error' as 'success' | 'error' | 'warning' | 'info',
+    title: '',
+    message: '',
+    actionText: '',
+    onAction: () => {},
+  });
+
+  // Google Sign-In
+  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
+    clientId: 'YOUR_WEB_CLIENT_ID',
+    androidClientId: 'YOUR_ANDROID_CLIENT_ID',
+    iosClientId: 'YOUR_IOS_CLIENT_ID',
+  });
+
+  // Handle Google Sign-In response
+  useEffect(() => {
+    if (googleResponse?.type === 'success' && googleResponse.authentication) {
+      // Handle Google sign in success
+      handleGoogleLogin(googleResponse.authentication.accessToken);
+    }
+  }, [googleResponse]);
+
+  // Handle input changes with validation
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
+    if (touched.email) {
+      authViewModel.validateEmail(text);
+    }
+  };
+
+  const handlePasswordChange = (text: string) => {
+    setPassword(text);
+    if (touched.password) {
+      // Simple presence validation for login
+      authViewModel.passwordError = text.length === 0 ? 'This field is required' : null;
+    }
+  };
+
+  // Mark fields as touched on blur
+  const handleEmailBlur = () => {
+    setTouched({ ...touched, email: true });
+    if (email.trim() === '') {
+      runInAction(() => {
+        authViewModel.emailError = 'This field is required';
+      });
+    } else {
+      authViewModel.validateEmail(email);
+    }
+  };
+
+  const handlePasswordBlur = () => {
+    setTouched({ ...touched, password: true });
+    runInAction(() => {
+      authViewModel.passwordError = password.length === 0 ? 'This field is required' : null;
+    });
+  };
+
+  // Handle login button press
+  const handleLogin = async () => {
+    // Mark all fields as touched for validation
+    setTouched({ email: true, password: true });
+    
+    // Check for empty fields first
+    let hasError = false;
+    
+    if (email.trim() === '') {
+      runInAction(() => {
+        authViewModel.emailError = 'This field is required';
+      });
+      hasError = true;
+    }
+    
+    if (password === '') {
+      runInAction(() => {
+        authViewModel.passwordError = 'This field is required';
+      });
+      hasError = true;
+    }
+    
+    // If there are empty fields, don't proceed
+    if (hasError) {
+      return;
+    }
+    
+    // Validate email if not empty
+    const isEmailValid = authViewModel.validateEmail(email);
+    
+    // Check for validation errors
+    if (!isEmailValid) {
+      return;
+    }
+    
+    // Attempt login
+    const success = await authViewModel.login({ email, password });
+    
+    if (success) {
+      showDialog({
+        type: 'success',
+        title: 'Login Successful!',
+        message: 'You have been logged in successfully.',
+        actionText: 'Continue',
+        onAction: () => navigation.navigate('Home')
+      });
+    } else if (authViewModel.error) {
+      // Determine the specific error message type
+      let errorTitle = 'Login Failed';
+      let errorMessage = authViewModel.error;
+      
+      if (authViewModel.error.includes('account does not exist')) {
+        errorTitle = 'Account Not Found';
+        errorMessage = 'This account does not exist. Please check your email or create a new account.';
+      } else if (authViewModel.error.includes('Invalid email or password')) {
+        errorTitle = 'Invalid Credentials';
+        errorMessage = 'The email or password you entered is incorrect. Please try again.';
+      } else if (authViewModel.error.includes('Network Error')) {
+        errorTitle = 'Network Error';
+        errorMessage = 'Unable to connect to the server. Please check your internet connection and try again.';
+      } else if (authViewModel.error.includes('Server Error')) {
+        errorTitle = 'Server Error';
+        errorMessage = 'Something went wrong on our servers. Please try again later.';
+      }
+      
+      showDialog({
+        type: 'error',
+        title: errorTitle,
+        message: errorMessage
+      });
+    }
+  };
+
+  // Handle Google login
+  const handleGoogleLogin = async (token: string) => {
+    const success = await authViewModel.signInWithGoogle(token);
+    
+    if (success) {
+      showDialog({
+        type: 'success',
+        title: 'Google Login Successful!',
+        message: 'You have been logged in successfully with Google.',
+        actionText: 'Continue',
+        onAction: () => navigation.navigate('Home')
+      });
+    } else if (authViewModel.error) {
+      showDialog({
+        type: 'error',
+        title: 'Google Login Failed',
+        message: authViewModel.error
+      });
+    }
+  };
+
+  // Helper function to show dialog
+  const showDialog = ({ type, title, message, actionText, onAction }: {
+    type: 'success' | 'error' | 'warning' | 'info',
+    title: string,
+    message: string,
+    actionText?: string,
+    onAction?: () => void,
+  }) => {
+    setDialogProps({
+      type,
+      title,
+      message,
+      actionText: actionText || '',
+      onAction: onAction || (() => {}),
+    });
+    setDialogVisible(true);
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Welcome Back</Text>
+          <Text style={styles.subtitle}>
+            Sign in to your account to continue
+          </Text>
+        </View>
+
+        <View style={styles.form}>
+          <InputField
+            label="Email"
+            placeholder="your.email@example.com"
+            value={email}
+            onChangeText={handleEmailChange}
+            onBlur={handleEmailBlur}
+            error={authViewModel.emailError}
+            touched={touched.email}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <InputField
+            label="Password"
+            placeholder="Your password"
+            value={password}
+            onChangeText={handlePasswordChange}
+            onBlur={handlePasswordBlur}
+            error={authViewModel.passwordError}
+            touched={touched.password}
+            isPassword
+          />
+
+          <TouchableOpacity style={styles.forgotPassword}>
+            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.button,
+              authViewModel.isLoading && styles.buttonDisabled,
+            ]}
+            onPress={handleLogin}
+            disabled={authViewModel.isLoading}
+          >
+            {authViewModel.isLoading ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text style={styles.buttonText}>Login</Text>
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>OR</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <GoogleButton 
+            onPress={() => promptGoogleAsync()} 
+            isLoading={authViewModel.isLoading}
+          />
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Don't have an account? </Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Register')}
+            >
+              <Text style={styles.footerLink}>Sign Up</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Message Dialog */}
+      <MessageDialog
+        visible={dialogVisible}
+        type={dialogProps.type}
+        title={dialogProps.title}
+        message={dialogProps.message}
+        actionText={dialogProps.actionText}
+        onAction={dialogProps.actionText ? dialogProps.onAction : undefined}
+        onDismiss={() => setDialogVisible(false)}
+      />
+    </KeyboardAvoidingView>
+  );
+});
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    padding: theme.spacing.lg,
+  },
+  header: {
+    marginTop: 60,
+    marginBottom: theme.spacing.xl,
+  },
+  title: {
+    ...theme.typography.h1,
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
+  },
+  subtitle: {
+    ...theme.typography.body,
+    color: theme.colors.textLight,
+  },
+  form: {
+    marginBottom: theme.spacing.xl,
+  },
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    marginBottom: theme.spacing.md,
+  },
+  forgotPasswordText: {
+    color: theme.colors.primary,
+    fontSize: 14,
+  },
+  button: {
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.borderRadius.md,
+    paddingVertical: 15,
+    alignItems: 'center',
+    marginBottom: theme.spacing.lg,
+  },
+  buttonDisabled: {
+    backgroundColor: theme.colors.gray,
+  },
+  buttonText: {
+    color: theme.colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: theme.spacing.md,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: theme.colors.border,
+  },
+  dividerText: {
+    color: theme.colors.textLight,
+    paddingHorizontal: theme.spacing.sm,
+    fontSize: 14,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: theme.spacing.xl,
+  },
+  footerText: {
+    color: theme.colors.textLight,
+    fontSize: 14,
+  },
+  footerLink: {
+    color: theme.colors.primary,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+});
+
+export default LoginScreen; 
