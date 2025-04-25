@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosInstance, AxiosResponse } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { saveSecurely, getSecurely, deleteSecurely } from '../utils/secureStorage';
 
 // Types
 export interface LoginRequest {
@@ -72,15 +73,32 @@ axiosInstance.interceptors.response.use(
 export const authService = {
   // Token management
   setToken: async (token: string): Promise<void> => {
-    await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
+    try {
+      // Use secureStorage.saveSecurely instead of AsyncStorage for secure token storage
+      await saveSecurely('auth_token', { token });
+    } catch (error) {
+      console.error('Error saving token:', error);
+    }
   },
 
   getToken: async (): Promise<string | null> => {
-    return await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+    try {
+      // Use secure storage to retrieve token
+      const data = await getSecurely('auth_token');
+      return data?.token || null;
+    } catch (error) {
+      console.error('Error getting token:', error);
+      return null;
+    }
   },
 
   clearToken: async (): Promise<void> => {
-    await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+    try {
+      // Use secure storage to clear token
+      await deleteSecurely('auth_token');
+    } catch (error) {
+      console.error('Error clearing token:', error);
+    }
   },
 
   // Auth methods

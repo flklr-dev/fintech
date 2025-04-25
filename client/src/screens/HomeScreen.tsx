@@ -8,38 +8,25 @@ import {
   SafeAreaView,
   RefreshControl,
   Dimensions,
-  Image,
   Platform
 } from 'react-native';
 import { observer } from 'mobx-react';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
+import { runInAction } from 'mobx';
+import { useNavigation } from '../hooks/useNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import AppHeader from '../components/AppHeader';
 import BottomNavBar from '../components/BottomNavBar';
 import { authViewModel } from '../viewmodels/authViewModel';
 import { authService } from '../services/apiService';
-
-// Define the navigation prop type
-type RootStackParamList = {
-  Login: undefined;
-  Register: undefined;
-  Home: undefined;
-  Budget: undefined;
-  Transactions: undefined;
-  Reports: undefined;
-};
-
-type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
-
-type ScreenName = 'Home' | 'Budgets' | 'Transactions' | 'Reports';
+import MessageDialog from '../components/MessageDialog';
+import { ScreenName } from '../components/BottomNavBar';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48) / 2;
 
 const HomeScreen = observer(() => {
-  const navigation = useNavigation<HomeScreenNavigationProp>();
+  const navigation = useNavigation();
   const [activeScreen, setActiveScreen] = useState<ScreenName>('Home');
   const [refreshing, setRefreshing] = useState(false);
   
@@ -67,15 +54,23 @@ const HomeScreen = observer(() => {
   }, []);
 
   const checkAuthentication = async () => {
-    const token = await authService.getToken();
-    if (!token) {
-      showDialog({
-        type: 'error',
-        title: 'Session Expired',
-        message: 'Your session has expired. Please login again.',
-        actionText: 'Login',
-        onAction: () => navigation.navigate('Login')
-      });
+    if (!authViewModel.isLoggedIn) {
+      const token = await authService.getToken();
+      if (token) {
+        // If token exists but isLoggedIn is false, update the state
+        runInAction(() => {
+          authViewModel.isLoggedIn = true;
+        });
+      } else {
+        // Only show dialog if no token is found
+        showDialog({
+          type: 'error',
+          title: 'Session Expired',
+          message: 'Your session has expired. Please login again.',
+          actionText: 'Login',
+          onAction: () => navigation.navigate('Login')
+        });
+      }
     }
   };
 
@@ -89,7 +84,13 @@ const HomeScreen = observer(() => {
 
   const handleNavigation = (screen: ScreenName) => {
     setActiveScreen(screen);
-    // Add actual navigation when these screens are implemented
+    if (screen === 'Budget') {
+      navigation.navigate('Budget');
+    } else if (screen === 'Transactions') {
+      navigation.navigate('Transactions');
+    } else if (screen === 'Reports') {
+      navigation.navigate('Reports');
+    }
   };
 
   const handleLogout = async () => {
@@ -105,7 +106,7 @@ const HomeScreen = observer(() => {
   const handleCreateBudget = () => {
     // Navigate to create budget screen
     console.log('Create budget pressed');
-    handleNavigation('Budgets');
+    handleNavigation('Budget');
   };
 
   // Helper function to show dialog
@@ -285,7 +286,7 @@ const HomeScreen = observer(() => {
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Budget Progress</Text>
-            <TouchableOpacity onPress={() => handleNavigation('Budgets')}>
+            <TouchableOpacity onPress={() => handleNavigation('Budget')}>
               <Text style={styles.viewAllText}>Manage</Text>
             </TouchableOpacity>
           </View>
@@ -337,27 +338,18 @@ const HomeScreen = observer(() => {
         </View>
       </ScrollView>
       
-      {/* Floating Action Button */}
-      <TouchableOpacity 
-        style={styles.floatingButton} 
-        onPress={handleAddExpense}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="add" size={26} color="#fff" />
-      </TouchableOpacity>
-      
       <BottomNavBar activeScreen={activeScreen} onPress={handleNavigation} />
       
-      {/* Temporarily removed MessageDialog until it's fixed */}
-      {/* <MessageDialog
+      <MessageDialog
         visible={dialogVisible}
         type={dialogProps.type}
         title={dialogProps.title}
         message={dialogProps.message}
         actionText={dialogProps.actionText}
-        onAction={dialogProps.actionText ? dialogProps.onAction : undefined}
+        onAction={dialogProps.onAction}
         onDismiss={() => setDialogVisible(false)}
-      /> */}
+        autoDismiss={dialogProps.type === 'success'} // Auto dismiss success messages
+      />
     </SafeAreaView>
   );
 });
@@ -447,7 +439,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   budgetButton: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: '#4CAF50',
     marginLeft: 8,
   },
   ctaButtonText: {
@@ -619,28 +611,6 @@ const styles = StyleSheet.create({
   progressBar: {
     height: '100%',
     borderRadius: 3,
-  },
-  floatingButton: {
-    position: 'absolute',
-    right: 20,
-    bottom: 80,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: theme.colors.secondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: 'rgba(0, 0, 0, 0.2)',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 1,
-        shadowRadius: 10,
-      },
-      android: {
-        elevation: 6,
-      }
-    }),
   },
 });
 

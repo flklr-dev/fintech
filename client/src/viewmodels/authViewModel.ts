@@ -34,11 +34,35 @@ class AuthViewModel {
 
   private async checkInitialAuthState() {
     try {
+      this.isLoading = true;
       const token = await authService.getToken();
-      this.isLoggedIn = !!token;
+      
+      if (token) {
+        // If a token exists, validate it 
+        // (In a real app you might want to decode the JWT to check expiration)
+        runInAction(() => {
+          this.isLoggedIn = true;
+          // In a production app, you would:
+          // 1. Decode the JWT to get user info 
+          // 2. Or make an API call to /me endpoint to get user profile
+          // For now, we'll set some placeholder values
+          this.userId = 'user-id';
+          this.userName = 'User';
+        });
+      } else {
+        runInAction(() => {
+          this.isLoggedIn = false;
+        });
+      }
     } catch (error) {
       console.error('Failed to check auth state:', error);
-      this.isLoggedIn = false;
+      runInAction(() => {
+        this.isLoggedIn = false;
+      });
+    } finally {
+      runInAction(() => {
+        this.isLoading = false;
+      });
     }
   }
 
@@ -291,6 +315,7 @@ class AuthViewModel {
       
       return true;
     } catch (error) {
+      console.error('Logout error:', error);
       runInAction(() => {
         this.isLoading = false;
         this.error = 'Logout failed. Please try again.';

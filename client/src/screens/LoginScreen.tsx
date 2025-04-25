@@ -26,6 +26,9 @@ type RootStackParamList = {
   Login: undefined;
   Register: undefined;
   Home: undefined;
+  Budgets: undefined;
+  Transactions: undefined;
+  Reports: undefined;
 };
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
@@ -60,13 +63,18 @@ const LoginScreen = observer(() => {
     iosClientId: 'YOUR_IOS_CLIENT_ID',
   });
 
-  // Handle Google Sign-In response
+  // Add useEffect for session check
   useEffect(() => {
-    if (googleResponse?.type === 'success' && googleResponse.authentication) {
-      // Handle Google sign in success
-      handleGoogleLogin(googleResponse.authentication.accessToken);
+    checkExistingSession();
+  }, []);
+
+  // Check if user is already logged in
+  const checkExistingSession = async () => {
+    // If the user is already logged in, navigate directly to Home
+    if (authViewModel.isLoggedIn) {
+      navigation.navigate('Home');
     }
-  }, [googleResponse]);
+  };
 
   // Handle input changes with validation
   const handleEmailChange = (text: string) => {
@@ -105,36 +113,16 @@ const LoginScreen = observer(() => {
 
   // Handle login button press
   const handleLogin = async () => {
-    // Mark all fields as touched for validation
-    setTouched({ email: true, password: true });
-    
-    // Check for empty fields first
-    let hasError = false;
-    
-    if (email.trim() === '') {
-      runInAction(() => {
-        authViewModel.emailError = 'This field is required';
-      });
-      hasError = true;
-    }
-    
-    if (password === '') {
-      runInAction(() => {
-        authViewModel.passwordError = 'This field is required';
-      });
-      hasError = true;
-    }
-    
-    // If there are empty fields, don't proceed
-    if (hasError) {
-      return;
-    }
-    
-    // Validate email if not empty
+    // Validate inputs
     const isEmailValid = authViewModel.validateEmail(email);
+    const isPasswordValid = password.length > 0;
     
-    // Check for validation errors
-    if (!isEmailValid) {
+    if (!isEmailValid || !isPasswordValid) {
+      if (!isPasswordValid) {
+        runInAction(() => {
+          authViewModel.passwordError = 'This field is required';
+        });
+      }
       return;
     }
     
@@ -144,34 +132,15 @@ const LoginScreen = observer(() => {
     if (success) {
       showDialog({
         type: 'success',
-        title: 'Login Successful!',
+        title: 'Login Successful',
         message: 'You have been logged in successfully.',
-        actionText: 'Continue',
-        onAction: () => navigation.navigate('Home')
+        onAction: () => navigation.navigate('Home'),
       });
     } else if (authViewModel.error) {
-      // Determine the specific error message type
-      let errorTitle = 'Login Failed';
-      let errorMessage = authViewModel.error;
-      
-      if (authViewModel.error.includes('account does not exist')) {
-        errorTitle = 'Account Not Found';
-        errorMessage = 'This account does not exist. Please check your email or create a new account.';
-      } else if (authViewModel.error.includes('Invalid email or password')) {
-        errorTitle = 'Invalid Credentials';
-        errorMessage = 'The email or password you entered is incorrect. Please try again.';
-      } else if (authViewModel.error.includes('Network Error')) {
-        errorTitle = 'Network Error';
-        errorMessage = 'Unable to connect to the server. Please check your internet connection and try again.';
-      } else if (authViewModel.error.includes('Server Error')) {
-        errorTitle = 'Server Error';
-        errorMessage = 'Something went wrong on our servers. Please try again later.';
-      }
-      
       showDialog({
         type: 'error',
-        title: errorTitle,
-        message: errorMessage
+        title: 'Login Failed',
+        message: authViewModel.error
       });
     }
   };
@@ -183,10 +152,9 @@ const LoginScreen = observer(() => {
     if (success) {
       showDialog({
         type: 'success',
-        title: 'Google Login Successful!',
+        title: 'Google Login Successful',
         message: 'You have been logged in successfully with Google.',
-        actionText: 'Continue',
-        onAction: () => navigation.navigate('Home')
+        onAction: () => navigation.navigate('Home'),
       });
     } else if (authViewModel.error) {
       showDialog({
@@ -304,8 +272,9 @@ const LoginScreen = observer(() => {
         title={dialogProps.title}
         message={dialogProps.message}
         actionText={dialogProps.actionText}
-        onAction={dialogProps.actionText ? dialogProps.onAction : undefined}
+        onAction={dialogProps.onAction}
         onDismiss={() => setDialogVisible(false)}
+        autoDismiss={dialogProps.type === 'success'} // Auto dismiss success messages
       />
     </KeyboardAvoidingView>
   );

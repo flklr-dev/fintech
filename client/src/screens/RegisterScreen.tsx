@@ -27,6 +27,9 @@ type RootStackParamList = {
   Login: undefined;
   Register: undefined;
   Home: undefined;
+  Budgets: undefined;
+  Transactions: undefined;
+  Reports: undefined;
 };
 
 type RegisterScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Register'>;
@@ -80,6 +83,19 @@ const RegisterScreen = observer(() => {
   useEffect(() => {
     authViewModel.resetErrors();
   }, []);
+
+  // Add useEffect for session check
+  useEffect(() => {
+    checkExistingSession();
+  }, []);
+
+  // Check if user is already logged in
+  const checkExistingSession = async () => {
+    // If the user is already logged in, navigate directly to Home
+    if (authViewModel.isLoggedIn) {
+      navigation.navigate('Home');
+    }
+  };
 
   // Handle input changes with validation
   const handleNameChange = (text: string) => {
@@ -234,36 +250,15 @@ const RegisterScreen = observer(() => {
     if (success) {
       showDialog({
         type: 'success',
-        title: 'Registration Successful!',
-        message: 'Your account has been created successfully. You can now login with your credentials.',
-        actionText: 'Go to Login',
-        onAction: () => navigation.navigate('Login')
+        title: 'Registration Successful',
+        message: 'Your account has been created successfully.',
+        onAction: () => navigation.navigate('Home'),
       });
     } else if (authViewModel.error) {
-      // Determine the specific error message type
-      let errorTitle = 'Registration Failed';
-      let errorMessage = authViewModel.error;
-      
-      if (
-        authViewModel.error.includes('email already registered') ||
-        authViewModel.error.includes('E11000') || 
-        authViewModel.error.includes('duplicate key') ||
-        authViewModel.error.includes('dup_key')
-      ) {
-        errorTitle = 'Account Already Exists';
-        errorMessage = 'An account with this email already exists. Please use a different email or try logging in.';
-      } else if (authViewModel.error.includes('Network Error')) {
-        errorTitle = 'Network Error';
-        errorMessage = 'Unable to connect to the server. Please check your internet connection and try again.';
-      } else if (authViewModel.error.includes('Server Error')) {
-        errorTitle = 'Server Error';
-        errorMessage = 'Something went wrong on our servers. Please try again later.';
-      }
-      
       showDialog({
         type: 'error',
-        title: errorTitle,
-        message: errorMessage
+        title: 'Registration Failed',
+        message: authViewModel.error
       });
     }
   };
@@ -275,9 +270,8 @@ const RegisterScreen = observer(() => {
     if (success) {
       showDialog({
         type: 'success',
-        title: 'Google Sign-up Successful!',
+        title: 'Google Sign-up Successful',
         message: 'Your account has been created and you have been logged in successfully with Google.',
-        actionText: 'Continue',
         onAction: () => navigation.navigate('Home')
       });
     } else if (authViewModel.error) {
@@ -421,8 +415,9 @@ const RegisterScreen = observer(() => {
         title={dialogProps.title}
         message={dialogProps.message}
         actionText={dialogProps.actionText}
-        onAction={dialogProps.actionText ? dialogProps.onAction : undefined}
+        onAction={dialogProps.onAction}
         onDismiss={() => setDialogVisible(false)}
+        autoDismiss={dialogProps.type === 'success'} // Auto dismiss success messages
       />
     </KeyboardAvoidingView>
   );

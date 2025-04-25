@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,8 @@ interface MessageDialogProps {
   onDismiss: () => void;
   onAction?: () => void;
   actionText?: string;
+  autoDismiss?: boolean;
+  autoDismissTimeout?: number;
 }
 
 const MessageDialog: React.FC<MessageDialogProps> = ({
@@ -31,7 +33,23 @@ const MessageDialog: React.FC<MessageDialogProps> = ({
   onDismiss,
   onAction,
   actionText,
+  autoDismiss = false,
+  autoDismissTimeout = 1500,
 }) => {
+  useEffect(() => {
+    if (visible && autoDismiss) {
+      const timer = setTimeout(() => {
+        if (onAction) {
+          onAction();
+        } else {
+          onDismiss();
+        }
+      }, autoDismissTimeout);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [visible, autoDismiss, autoDismissTimeout, onDismiss, onAction]);
+
   const getIconName = () => {
     switch (type) {
       case 'success':
@@ -104,32 +122,34 @@ const MessageDialog: React.FC<MessageDialogProps> = ({
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.message}>{message}</Text>
           
-          <View style={styles.buttonContainer}>
-            {onAction && actionText ? (
-              <>
+          {!autoDismiss && (
+            <View style={styles.buttonContainer}>
+              {onAction && actionText ? (
+                <>
+                  <TouchableOpacity
+                    style={[styles.button, styles.dismissButton]}
+                    onPress={onDismiss}
+                  >
+                    <Text style={styles.dismissButtonText}>Dismiss</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.button, styles.actionButton, { backgroundColor: getIconColor() }]}
+                    onPress={onAction}
+                  >
+                    <Text style={styles.actionButtonText}>{actionText}</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
                 <TouchableOpacity
-                  style={[styles.button, styles.dismissButton]}
+                  style={[styles.button, styles.singleButton, { backgroundColor: getIconColor() }]}
                   onPress={onDismiss}
                 >
-                  <Text style={styles.dismissButtonText}>Dismiss</Text>
+                  <Text style={styles.actionButtonText}>Dismiss</Text>
                 </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.button, styles.actionButton, { backgroundColor: getIconColor() }]}
-                  onPress={onAction}
-                >
-                  <Text style={styles.actionButtonText}>{actionText}</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <TouchableOpacity
-                style={[styles.button, styles.singleButton, { backgroundColor: getIconColor() }]}
-                onPress={onDismiss}
-              >
-                <Text style={styles.actionButtonText}>Dismiss</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+              )}
+            </View>
+          )}
         </View>
       </View>
     </Modal>
