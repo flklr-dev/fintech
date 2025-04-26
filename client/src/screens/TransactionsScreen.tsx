@@ -31,6 +31,7 @@ import { Picker } from '@react-native-picker/picker';
 import api from '../api/api';
 import * as transactionService from '../api/transactionService';
 import { budgetService, Budget as BudgetType } from '../services/budgetService';
+import MessageDialog from '../components/MessageDialog';
 
 // Interface for transaction
 interface Transaction {
@@ -42,7 +43,6 @@ interface Transaction {
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   date: Date;
-  note?: string;
   isRecurring?: boolean;
   paymentMethod?: string;
   linkedBudget?: string; // Changed to string to store budget ID
@@ -140,7 +140,6 @@ const TransactionsScreen = observer(() => {
     amount: '',
     type: 'expense' as 'income' | 'expense',
     category: '',
-    note: '',
     date: new Date(),
     paymentMethod: '',
     linkedBudget: ''
@@ -160,7 +159,6 @@ const TransactionsScreen = observer(() => {
       icon: 'cart-outline',
       color: '#4CAF50',
       date: new Date(),
-      note: 'Weekly groceries',
     },
     {
       id: '2',
@@ -199,7 +197,8 @@ const TransactionsScreen = observer(() => {
   // Form validation
   const [formErrors, setFormErrors] = useState({
     amount: '',
-    category: ''
+    category: '',
+    description: ''
   });
 
   // Date picker state
@@ -209,6 +208,36 @@ const TransactionsScreen = observer(() => {
   const [availableBudgets, setAvailableBudgets] = useState<BudgetType[]>([]);
   const [activeBudgetsByCategory, setActiveBudgetsByCategory] = useState<Record<string, BudgetType>>({});
   
+  // Add a state for the budget dialog
+  const [showBudgetRequiredDialog, setShowBudgetRequiredDialog] = useState(false);
+  const [currentCategory, setCurrentCategory] = useState('');
+  
+  // Add state variables for options and edit modal
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [editedTransaction, setEditedTransaction] = useState({
+    title: '',
+    amount: '',
+    type: 'expense' as 'income' | 'expense',
+    category: '',
+    date: new Date(),
+    paymentMethod: '',
+    linkedBudget: ''
+  });
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  
+  const [showDatePickerEdit, setShowDatePickerEdit] = useState(false);
+
+  // Add state for menu position
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+
+  // Add state for edit restrictions
+  const [editRestrictions, setEditRestrictions] = useState({
+    canEditType: false,
+    canEditDate: false,
+  });
+
   // Initialize all sections as expanded by default
   useEffect(() => {
     if (transactions.length > 0) {
@@ -244,7 +273,6 @@ const TransactionsScreen = observer(() => {
             icon: CATEGORY_ICONS[category] || 'wallet-outline',
             color: CATEGORY_COLORS[category] || theme.colors.primary,
             date: new Date(transaction.date),
-            note: transaction.description,
             paymentMethod: transaction.paymentMethod || '',
             linkedBudget: transaction.linkedBudget || false
           };
@@ -264,7 +292,6 @@ const TransactionsScreen = observer(() => {
             icon: 'cart-outline',
             color: '#4CAF50',
             date: new Date(),
-            note: 'Weekly groceries',
           },
           {
             id: '2',
@@ -314,7 +341,6 @@ const TransactionsScreen = observer(() => {
           icon: 'cart-outline',
           color: '#4CAF50',
           date: new Date(),
-          note: 'Weekly groceries',
         },
         {
           id: '2',
@@ -395,11 +421,11 @@ const TransactionsScreen = observer(() => {
   const handleNavigation = (screen: ScreenName) => {
     setActiveScreen(screen);
     if (screen === 'Home') {
-      navigation.navigate('Home');
+      navigation.navigate('Home' as any);
     } else if (screen === 'Budget') {
-      navigation.navigate('Budget');
+      navigation.navigate('Budget' as any);
     } else if (screen === 'Reports') {
-      navigation.navigate('Reports');
+      navigation.navigate('Reports' as any);
     }
   };
 
@@ -498,12 +524,28 @@ const TransactionsScreen = observer(() => {
     }
   };
 
+  // For expense transactions, check if a budget exists for the selected category
+  const checkBudgetExists = () => {
+    if (newTransaction.type === 'expense') {
+      const hasBudget = activeBudgetsByCategory[newTransaction.category];
+      if (!hasBudget) {
+        // Save the current category for the dialog
+        setCurrentCategory(newTransaction.category);
+        // Show the budget required dialog
+        setShowBudgetRequiredDialog(true);
+        return false;
+      }
+    }
+    return true;
+  };
+
   // Handle adding new transaction with budget integration
   const handleAddTransaction = async () => {
     // Reset form errors
     const errors = {
       amount: '',
-      category: ''
+      category: '',
+      description: ''
     };
     
     // Validate amount
@@ -518,6 +560,11 @@ const TransactionsScreen = observer(() => {
       errors.category = 'Please select a category';
     }
     
+    // Validate description
+    if (!newTransaction.title.trim()) {
+      errors.description = 'Description is required';
+    }
+    
     // Check for future date
     if (newTransaction.date > new Date()) {
       Alert.alert('Invalid Date', 'Transaction date cannot be in the future');
@@ -525,11 +572,22 @@ const TransactionsScreen = observer(() => {
     }
     
     // If there are errors, show them and stop submission
-    if (errors.amount || errors.category) {
+    if (errors.amount || errors.category || errors.description) {
       setFormErrors(errors);
       return;
     }
 
+    // Check if budget exists before proceeding
+    if (!checkBudgetExists()) {
+      return;
+    }
+    
+    // Proceed with saving the transaction
+    saveTransaction();
+  };
+
+  // Extracted the transaction saving logic to a separate function
+  const saveTransaction = async () => {
     // Create title if not provided
     const title = newTransaction.title.trim() 
       ? newTransaction.title 
@@ -559,7 +617,6 @@ const TransactionsScreen = observer(() => {
         category: newTransaction.category,
         description: title,
         date: newTransaction.date,
-        note: newTransaction.note,
         paymentMethod: newTransaction.paymentMethod,
         linkedBudget: linkedBudgetId || undefined
       };
@@ -577,7 +634,6 @@ const TransactionsScreen = observer(() => {
         icon,
         color,
         date: newTransaction.date,
-        note: newTransaction.note,
         paymentMethod: newTransaction.paymentMethod || '',
         linkedBudget: linkedBudgetId
       };
@@ -621,12 +677,11 @@ const TransactionsScreen = observer(() => {
         amount: '',
         type: 'expense',
         category: '',
-        note: '',
         date: new Date(),
         paymentMethod: '',
         linkedBudget: ''
       });
-      setFormErrors({ amount: '', category: '' });
+      setFormErrors({ amount: '', category: '', description: '' });
       
       // Update last transaction type
       setLastTransactionType(newTransaction.type);
@@ -653,41 +708,366 @@ const TransactionsScreen = observer(() => {
     return newTransaction.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
   };
 
-  // Render transaction item
+  // Handle opening the options modal for a transaction
+  const handleOpenOptions = (transaction: Transaction, event: any) => {
+    event.stopPropagation();
+    setSelectedTransaction(transaction);
+    
+    // Measure the position of the touchable that was pressed
+    event.target.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
+      // Position the menu to the left of the button, slightly below it
+      setMenuPosition({ 
+        x: pageX - 140, // Position left of the button with width of 140
+        y: pageY + height 
+      });
+      setShowOptionsModal(true);
+    });
+  };
+
+  // Handle edit transaction
+  const handleEditTransaction = () => {
+    if (selectedTransaction) {
+      // Set up edit restrictions - type cannot be changed, date cannot be changed
+      setEditRestrictions({
+        canEditType: false, // Prevent changing income/expense
+        canEditDate: false, // Prevent changing date
+      });
+
+      setEditedTransaction({
+        title: selectedTransaction.title || '', // Description
+        amount: selectedTransaction.amount.toString(),
+        type: selectedTransaction.type,
+        category: selectedTransaction.category,
+        date: selectedTransaction.date,
+        paymentMethod: selectedTransaction.paymentMethod || '',
+        linkedBudget: selectedTransaction.linkedBudget || ''
+      });
+      setShowOptionsModal(false);
+      setShowEditModal(true);
+    }
+  };
+
+  // Handle delete transaction
+  const handleDeleteTransaction = () => {
+    setShowOptionsModal(false);
+    setShowDeleteDialog(true);
+  };
+
+  // Confirm deletion of transaction
+  const confirmDeleteTransaction = async () => {
+    if (!selectedTransaction) return;
+    
+    try {
+      setShowDeleteDialog(false);
+      setLoading(true);
+      
+      const success = await transactionService.deleteTransaction(selectedTransaction.id);
+      
+      if (success) {
+        // Remove the transaction from the local state
+        setTransactions(transactions.filter(t => t.id !== selectedTransaction.id));
+        
+        // For expenses, refresh the budget spending calculations
+        if (selectedTransaction.type === 'expense') {
+          try {
+            await budgetService.refreshBudgetSpending();
+            const budgets = await budgetService.getBudgets();
+            setAvailableBudgets(budgets);
+            
+            // Update active budgets map
+            const budgetMap: Record<string, BudgetType> = {};
+            budgets.forEach(budget => {
+              const now = new Date();
+              if (new Date(budget.startDate) <= now && new Date(budget.endDate) >= now) {
+                budgetMap[budget.category] = budget;
+              }
+            });
+            setActiveBudgetsByCategory(budgetMap);
+          } catch (refreshError) {
+            console.error('Error refreshing budget data:', refreshError);
+          }
+        }
+        
+        // Show success message
+        setShowDeleteDialog(false);
+        // Show dialog with auto-dismiss
+        showDialog({
+          type: 'success',
+          title: 'Success',
+          message: 'Transaction deleted successfully',
+          autoDismiss: true
+        });
+      } else {
+        throw new Error('Failed to delete transaction');
+      }
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      showDialog({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to delete transaction. Please try again.',
+        autoDismiss: true
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle saving edited transaction
+  const handleSaveEditedTransaction = async () => {
+    if (!selectedTransaction) return;
+    
+    // Reset form errors
+    const errors = {
+      amount: '',
+      category: '',
+      description: ''
+    };
+    
+    // Validate amount
+    if (!editedTransaction.amount.trim()) {
+      errors.amount = 'Amount is required';
+    } else if (parseFloat(editedTransaction.amount) <= 0) {
+      errors.amount = 'Amount must be greater than 0';
+    }
+    
+    // Validate category
+    if (!editedTransaction.category) {
+      errors.category = 'Please select a category';
+    }
+    
+    // Validate description
+    if (!editedTransaction.title.trim()) {
+      errors.description = 'Description is required';
+    }
+    
+    // If there are errors, show them and stop submission
+    if (errors.amount || errors.category || errors.description) {
+      setFormErrors(errors);
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      
+      // Use the title from form as the description (it's required now)
+      const title = editedTransaction.title.trim();
+        
+      const amount = parseFloat(editedTransaction.amount);
+        
+      // Get icon and color based on category
+      const icon = CATEGORY_ICONS[editedTransaction.category] || 'wallet-outline';
+      const color = CATEGORY_COLORS[editedTransaction.category] || theme.colors.primary;
+        
+      // Auto-reassign budget if category has changed and it's an expense
+      let linkedBudgetId = editedTransaction.linkedBudget;
+        
+      if (editedTransaction.type === 'expense') {
+        // Check if category has changed
+        if (editedTransaction.category !== selectedTransaction.category) {
+          // Reset the budget link
+          linkedBudgetId = '';
+          
+          // Check if there's an active budget for the new category
+          if (activeBudgetsByCategory[editedTransaction.category]) {
+            linkedBudgetId = activeBudgetsByCategory[editedTransaction.category]._id;
+            
+            // Show a toast notification about budget reassignment
+            if (Platform.OS === 'android') {
+              ToastAndroid.show(
+                `Transaction reassigned to ${editedTransaction.category} budget`, 
+                ToastAndroid.SHORT
+              );
+            }
+          }
+        }
+      } else {
+        // For income transactions, clear any budget link
+        linkedBudgetId = '';
+      }
+        
+      // Prepare data for API call
+      const transactionData = {
+        amount,
+        // Don't allow type changes - use the original type
+        type: selectedTransaction.type,
+        category: editedTransaction.category,
+        description: title,
+        // Don't allow date changes - use the original date
+        date: selectedTransaction.date,
+        paymentMethod: editedTransaction.paymentMethod,
+        linkedBudget: linkedBudgetId || undefined
+      };
+        
+      // Update transaction on server
+      const updatedTransaction = await transactionService.updateTransaction(selectedTransaction.id, transactionData);
+        
+      // Format for local state update
+      const updatedTransactionObj: Transaction = {
+        id: selectedTransaction.id,
+        title,
+        amount,
+        type: selectedTransaction.type, // Keep original type
+        category: editedTransaction.category,
+        icon,
+        color,
+        date: selectedTransaction.date, // Keep original date
+        paymentMethod: editedTransaction.paymentMethod || '',
+        linkedBudget: linkedBudgetId,
+        isRecurring: selectedTransaction.isRecurring // Preserve recurring status
+      };
+        
+      // Update the transaction in the local state
+      setTransactions(transactions.map(t => 
+        t.id === selectedTransaction.id ? updatedTransactionObj : t
+      ));
+        
+      // For expenses, refresh the budget spending calculations
+      if (selectedTransaction.type === 'expense') {
+        try {
+          await budgetService.refreshBudgetSpending();
+          const budgets = await budgetService.getBudgets();
+          setAvailableBudgets(budgets);
+          
+          // Update active budgets map
+          const budgetMap: Record<string, BudgetType> = {};
+          budgets.forEach(budget => {
+            const now = new Date();
+            if (new Date(budget.startDate) <= now && new Date(budget.endDate) >= now) {
+              budgetMap[budget.category] = budget;
+            }
+          });
+          setActiveBudgetsByCategory(budgetMap);
+        } catch (refreshError) {
+          console.error('Error refreshing budget data:', refreshError);
+        }
+      }
+        
+      setShowEditModal(false);
+        
+      // Show success dialog with auto-dismiss
+      showDialog({
+        type: 'success',
+        title: 'Success',
+        message: 'Transaction updated successfully',
+        autoDismiss: true
+      });
+        
+    } catch (error) {
+      console.error('Error updating transaction:', error);
+      showDialog({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to update transaction. Please try again.',
+        autoDismiss: true
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Handle date change for edit modal
+  const handleEditDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePickerEdit(false);
+    if (selectedDate) {
+      setEditedTransaction(prev => ({ ...prev, date: selectedDate }));
+    }
+  };
+
+  // Add or update the showDialog function if it doesn't exist
+  const showDialog = ({ 
+    type, 
+    title, 
+    message, 
+    actionText, 
+    onAction,
+    autoDismiss = false 
+  }: {
+    type: 'success' | 'error' | 'warning' | 'info',
+    title: string,
+    message: string,
+    actionText?: string,
+    onAction?: () => void,
+    autoDismiss?: boolean
+  }) => {
+    setDialogConfig({
+      visible: true,
+      type,
+      title,
+      message,
+      actionText,
+      onAction,
+      autoDismiss
+    });
+  };
+
+  // Add state for dialog
+  const [dialogConfig, setDialogConfig] = useState({
+    visible: false,
+    type: 'info' as 'success' | 'error' | 'warning' | 'info',
+    title: '',
+    message: '',
+    actionText: undefined as string | undefined,
+    onAction: undefined as (() => void) | undefined,
+    autoDismiss: false
+  });
+
+  // Render transaction item with a completely redesigned layout
   const renderTransactionItem = ({ item }: { item: Transaction }) => {
     const isExpense = item.type === 'expense';
     
     return (
       <TouchableOpacity 
-        style={[styles.transactionItem, styles.cardShadow]}
+        style={[styles.transactionItem, styles.transactionShadow]}
         onPress={() => {
-          // Handle transaction details
+          // View transaction details
+          setSelectedTransaction(item);
+          handleEditTransaction();
         }}
       >
-        <View style={[styles.categoryIcon, { backgroundColor: item.color }]}>
-          <Ionicons name={item.icon} size={20} color="#fff" />
-        </View>
-        
-        <View style={styles.transactionInfo}>
-          <View style={styles.transactionHeader}>
-            <Text style={styles.transactionTitle}>{item.title}</Text>
-            {item.isRecurring && (
-              <Ionicons name="repeat" size={16} color={theme.colors.primary} />
-            )}
+        {/* Left side - icon and category */}
+        <View style={styles.transactionLeftSection}>
+          <View style={[styles.categoryIcon, { backgroundColor: item.color }]}>
+            <Ionicons name={item.icon} size={20} color="#fff" />
           </View>
-          <Text style={styles.transactionCategory}>{item.category}</Text>
-          <Text style={styles.transactionDate}>
-            {item.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
+          
+          <View style={styles.categoryDetails}>
+            <Text style={styles.transactionCategory}>{item.category}</Text>
+            <Text style={styles.transactionDate}>
+              {item.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </View>
         </View>
         
-        <View style={styles.amountContainer}>
+        {/* Right side - amount and title */}
+        <View style={styles.transactionRightSection}>
           <Text style={[
             styles.transactionAmount,
             isExpense ? styles.expenseAmount : styles.incomeAmount
           ]}>
             {isExpense ? '-' : '+'}${Math.abs(item.amount).toFixed(2)}
           </Text>
+          
+          <View style={styles.titleAndOptions}>
+            <Text style={styles.transactionTitle} numberOfLines={1} ellipsizeMode="tail">
+              {item.title}
+            </Text>
+            
+            {/* Three-dot menu button */}
+            <TouchableOpacity 
+              style={styles.optionsButton}
+              onPress={(event) => handleOpenOptions(item, event)}
+            >
+              <Ionicons name="ellipsis-vertical" size={18} color={theme.colors.textLight} />
+            </TouchableOpacity>
+          </View>
+          
+          {item.isRecurring && (
+            <View style={styles.recurringBadge}>
+              <Ionicons name="repeat" size={12} color={theme.colors.white} />
+              <Text style={styles.recurringText}>Recurring</Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -921,14 +1301,26 @@ const TransactionsScreen = observer(() => {
                 />
               )}
               
-              {/* Title/Description */}
-              <Text style={styles.inputLabel}>Description (Optional)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., Grocery Shopping"
-                value={newTransaction.title}
-                onChangeText={(text) => setNewTransaction(prev => ({ ...prev, title: text }))}
-              />
+              {/* Description - required */}
+              <Text style={styles.inputLabel}>Description *</Text>
+              <View style={[
+                styles.input,
+                formErrors.description ? styles.inputError : null
+              ]}>
+                <TextInput
+                  placeholder="e.g., Grocery Shopping"
+                  value={newTransaction.title}
+                  onChangeText={(text) => {
+                    setNewTransaction(prev => ({ ...prev, title: text }));
+                    if (text.trim()) {
+                      setFormErrors(prev => ({ ...prev, description: '' }));
+                    }
+                  }}
+                />
+              </View>
+              {formErrors.description ? (
+                <Text style={styles.errorText}>{formErrors.description}</Text>
+              ) : null}
 
               {/* Payment Method */}
               <Text style={styles.inputLabel}>Payment Method (Optional)</Text>
@@ -945,16 +1337,6 @@ const TransactionsScreen = observer(() => {
                 </Picker>
               </View>
 
-              {/* Note */}
-              <Text style={styles.inputLabel}>Note (Optional)</Text>
-              <TextInput
-                style={[styles.input, styles.noteInput]}
-                placeholder="Add additional details..."
-                multiline
-                value={newTransaction.note}
-                onChangeText={(text) => setNewTransaction(prev => ({ ...prev, note: text }))}
-              />
-
               {/* Add Button */}
               <TouchableOpacity 
                 style={[
@@ -966,6 +1348,270 @@ const TransactionsScreen = observer(() => {
                 <Ionicons name="checkmark" size={20} color={theme.colors.white} style={styles.buttonIcon} />
                 <Text style={styles.addButtonText}>
                   Add {newTransaction.type === 'income' ? 'Income' : 'Expense'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+
+  // Navigate to budget screen to create a new budget
+  const navigateToBudgetCreation = () => {
+    // Close the dialog first
+    setShowBudgetRequiredDialog(false);
+    // Close the add transaction modal
+    setShowAddModal(false);
+    
+    // Wait for modals to close before navigating
+    setTimeout(() => {
+      // Navigate to Budget screen with parameters
+      navigation.navigate('Budget' as any, {
+        showAddModal: true,
+        preselectedCategory: currentCategory
+      });
+    }, 300);
+  };
+
+  // Add rendering for options modal
+  const renderOptionsModal = () => (
+    <Modal
+      visible={showOptionsModal}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={() => setShowOptionsModal(false)}
+    >
+      <TouchableOpacity 
+        style={styles.optionsOverlay}
+        activeOpacity={1}
+        onPress={() => setShowOptionsModal(false)}
+      >
+        <View 
+          style={[
+            styles.optionsModalContainer, 
+            { 
+              position: 'absolute',
+              left: menuPosition.x,
+              top: menuPosition.y,
+            }
+          ]}
+        >
+          <TouchableOpacity 
+            style={styles.optionItem}
+            onPress={handleEditTransaction}
+          >
+            <Ionicons name="create-outline" size={20} color={theme.colors.text} />
+            <Text style={styles.optionText}>Edit</Text>
+          </TouchableOpacity>
+          
+          <View style={styles.optionDivider} />
+          
+          <TouchableOpacity 
+            style={styles.optionItem}
+            onPress={handleDeleteTransaction}
+          >
+            <Ionicons name="trash-outline" size={20} color={theme.colors.error} />
+            <Text style={[styles.optionText, { color: theme.colors.error }]}>Delete</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+
+  // Render edit transaction modal
+  const renderEditModal = () => (
+    <Modal
+      visible={showEditModal}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowEditModal(false)}
+    >
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edit Transaction</Text>
+              <TouchableOpacity onPress={() => setShowEditModal(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalContent}>
+              {/* Transaction Type - Disabled from editing */}
+              <View style={styles.disabledSection}>
+                <Text style={styles.inputLabel}>Transaction Type</Text>
+                <View style={styles.disabledTypeContainer}>
+                  <View style={[
+                    styles.disabledTypeChip,
+                    editedTransaction.type === 'income' 
+                      ? styles.incomeTypeChip 
+                      : styles.expenseTypeChip
+                  ]}>
+                    <Ionicons 
+                      name={editedTransaction.type === 'income' ? "arrow-down-circle" : "arrow-up-circle"} 
+                      size={16} 
+                      color={theme.colors.white} 
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={styles.disabledTypeText}>
+                      {editedTransaction.type === 'income' ? 'Income' : 'Expense'}
+                    </Text>
+                  </View>
+                  <Text style={styles.disabledHelperText}>Transaction type cannot be changed</Text>
+                </View>
+              </View>
+
+              {/* Amount */}
+              <Text style={styles.inputLabel}>Amount *</Text>
+              <View style={[
+                styles.currencyInputContainer,
+                formErrors.amount ? styles.inputError : null
+              ]}>
+                <Text style={styles.currencySymbol}>₱</Text>
+                <TextInput
+                  style={styles.currencyInput}
+                  placeholder="0.00"
+                  keyboardType="numeric"
+                  value={editedTransaction.amount}
+                  onChangeText={(text) => {
+                    setEditedTransaction(prev => ({ ...prev, amount: text }));
+                    if (text.trim() && parseFloat(text) > 0) {
+                      setFormErrors(prev => ({ ...prev, amount: '' }));
+                    }
+                  }}
+                />
+              </View>
+              {formErrors.amount ? (
+                <Text style={styles.errorText}>{formErrors.amount}</Text>
+              ) : null}
+
+              {/* Category Selection */}
+              <Text style={styles.inputLabel}>Category *</Text>
+              <View style={[
+                styles.pickerContainer,
+                formErrors.category ? styles.inputError : null
+              ]}>
+                <Picker
+                  selectedValue={editedTransaction.category}
+                  onValueChange={(value) => {
+                    // When category changes, we'll reset the budget link
+                    // The correct budget will be auto-assigned on save
+                    setEditedTransaction(prev => ({ 
+                      ...prev, 
+                      category: value,
+                      linkedBudget: '' 
+                    }));
+                    setFormErrors(prev => ({ ...prev, category: '' }));
+                  }}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="Select a category" value="" color={theme.colors.textLight} />
+                  {(editedTransaction.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(category => {
+                    // For expenses, show if a budget exists
+                    const hasBudget = editedTransaction.type === 'expense' && activeBudgetsByCategory[category];
+                    
+                    return (
+                      <Picker.Item 
+                        key={category} 
+                        label={hasBudget ? `${category} (Budget: ${activeBudgetsByCategory[category].amount})` : category} 
+                        value={category} 
+                      />
+                    );
+                  })}
+                </Picker>
+              </View>
+              {formErrors.category ? (
+                <Text style={styles.errorText}>{formErrors.category}</Text>
+              ) : null}
+
+              {/* Budget Status - only show for expense transactions with linked budget */}
+              {editedTransaction.type === 'expense' && 
+               editedTransaction.category && 
+               activeBudgetsByCategory[editedTransaction.category] && (
+                <View style={styles.budgetStatusContainer}>
+                  <Text style={styles.budgetStatusLabel}>Budget Status:</Text>
+                  <View style={styles.budgetStatusDetails}>
+                    <Text style={styles.budgetStatusText}>
+                      Allocated: ${activeBudgetsByCategory[editedTransaction.category].amount.toFixed(2)}
+                    </Text>
+                    <Text style={styles.budgetStatusText}>
+                      Spent: ${(activeBudgetsByCategory[editedTransaction.category].currentSpending || 0).toFixed(2)}
+                    </Text>
+                    <Text style={styles.budgetStatusText}>
+                      Remaining: ${((activeBudgetsByCategory[editedTransaction.category].amount) - 
+                                    (activeBudgetsByCategory[editedTransaction.category].currentSpending || 0)).toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Date - Disabled from editing */}
+              <View style={styles.disabledSection}>
+                <Text style={styles.inputLabel}>Date</Text>
+                <View style={styles.disabledDateContainer}>
+                  <Text style={styles.disabledDateText}>
+                    {editedTransaction.date.toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    })}
+                  </Text>
+                  <Text style={styles.disabledHelperText}>Transaction date cannot be changed</Text>
+                </View>
+              </View>
+              
+              {/* Description - required */}
+              <Text style={styles.inputLabel}>Description *</Text>
+              <View style={[
+                styles.input,
+                formErrors.description ? styles.inputError : null
+              ]}>
+                <TextInput
+                  placeholder="e.g., Grocery Shopping"
+                  value={editedTransaction.title}
+                  onChangeText={(text) => {
+                    setEditedTransaction(prev => ({ ...prev, title: text }));
+                    if (text.trim()) {
+                      setFormErrors(prev => ({ ...prev, description: '' }));
+                    }
+                  }}
+                />
+              </View>
+              {formErrors.description ? (
+                <Text style={styles.errorText}>{formErrors.description}</Text>
+              ) : null}
+
+              {/* Payment Method */}
+              <Text style={styles.inputLabel}>Payment Method (Optional)</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={editedTransaction.paymentMethod}
+                  onValueChange={(value) => setEditedTransaction(prev => ({ ...prev, paymentMethod: value }))}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="Select payment method" value="" color={theme.colors.textLight} />
+                  {PAYMENT_METHODS.map(method => (
+                    <Picker.Item key={method} label={method} value={method} />
+                  ))}
+                </Picker>
+              </View>
+
+              {/* Save Button */}
+              <TouchableOpacity 
+                style={[
+                  styles.addButton,
+                  editedTransaction.type === 'income' ? styles.incomeButton : styles.expenseButton
+                ]}
+                onPress={handleSaveEditedTransaction}
+              >
+                <Ionicons name="checkmark" size={20} color={theme.colors.white} style={styles.buttonIcon} />
+                <Text style={styles.addButtonText}>
+                  Save Changes
                 </Text>
               </TouchableOpacity>
             </ScrollView>
@@ -999,7 +1645,7 @@ const TransactionsScreen = observer(() => {
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
-        </View>
+      </View>
         
         <ScrollView 
           horizontal 
@@ -1063,6 +1709,46 @@ const TransactionsScreen = observer(() => {
       
       {/* Add Transaction Modal */}
       {renderAddModal()}
+      
+      {/* Options Modal */}
+      {renderOptionsModal()}
+      
+      {/* Edit Transaction Modal */}
+      {renderEditModal()}
+      
+      {/* Budget Required Dialog */}
+      <MessageDialog
+        visible={showBudgetRequiredDialog}
+        type="warning"
+        title="Budget Required"
+        message={`You don't have a budget for "${currentCategory}". It's recommended to set a budget before adding expenses.`}
+        onDismiss={() => setShowBudgetRequiredDialog(false)}
+        onAction={navigateToBudgetCreation}
+        actionText="Create Budget"
+      />
+      
+      {/* Delete Confirmation Dialog */}
+      <MessageDialog
+        visible={showDeleteDialog}
+        type="warning"
+        title="Confirm Delete"
+        message="Are you sure you want to delete this transaction? This action cannot be undone."
+        onDismiss={() => setShowDeleteDialog(false)}
+        onAction={confirmDeleteTransaction}
+        actionText="Delete"
+      />
+      
+      {/* General Message Dialog */}
+      <MessageDialog
+        visible={dialogConfig.visible}
+        type={dialogConfig.type}
+        title={dialogConfig.title}
+        message={dialogConfig.message}
+        onDismiss={() => setDialogConfig(prev => ({ ...prev, visible: false }))}
+        onAction={dialogConfig.onAction}
+        actionText={dialogConfig.actionText}
+        autoDismiss={dialogConfig.autoDismiss}
+      />
       
       <BottomNavBar activeScreen={activeScreen} onPress={handleNavigation} />
     </SafeAreaView>
@@ -1154,13 +1840,14 @@ const styles = StyleSheet.create({
   },
   transactionItem: {
     flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: theme.colors.white,
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
     marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  cardShadow: {
+  transactionShadow: {
     ...Platform.select({
       ios: {
         shadowColor: theme.colors.shadow,
@@ -1173,43 +1860,41 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  transactionLeftSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
   categoryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  transactionInfo: {
-    flex: 1,
+  categoryDetails: {
     marginLeft: 12,
-  },
-  transactionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  transactionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginRight: 8,
+    justifyContent: 'center',
   },
   transactionCategory: {
-    fontSize: 14,
-    color: theme.colors.textLight,
-    marginTop: 2,
+    fontSize: 15,
+    fontWeight: '500',
+    color: theme.colors.text,
+    marginBottom: 2,
   },
   transactionDate: {
     fontSize: 12,
     color: theme.colors.textLight,
-    marginTop: 2,
   },
-  amountContainer: {
+  transactionRightSection: {
     alignItems: 'flex-end',
+    flex: 1,
   },
   transactionAmount: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    marginBottom: 4,
   },
   expenseAmount: {
     color: theme.colors.error,
@@ -1217,66 +1902,33 @@ const styles = StyleSheet.create({
   incomeAmount: {
     color: theme.colors.success,
   },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 20,
-  },
-  emptyStateTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: theme.colors.text,
-    marginTop: 20,
-    marginBottom: 12,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    color: theme.colors.textLight,
-    textAlign: 'center',
-    marginBottom: 28,
-    lineHeight: 22,
-  },
-  emptyStateButton: {
-    backgroundColor: theme.colors.primary,
+  titleAndOptions: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
   },
-  emptyStateButtonText: {
-    color: theme.colors.white,
-    fontSize: 16,
-    fontWeight: '600',
+  transactionTitle: {
+    fontSize: 13,
+    color: theme.colors.textLight,
+    maxWidth: '80%',
   },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    bottom: 80,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  optionsButton: {
+    padding: 2,
+    marginLeft: 4,
+  },
+  recurringBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: theme.colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: theme.colors.shadow,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginTop: 4,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  recurringText: {
+    fontSize: 10,
+    color: theme.colors.white,
+    marginLeft: 2,
+    fontWeight: '500',
   },
   modalOverlay: {
     flex: 1,
@@ -1506,6 +2158,144 @@ const styles = StyleSheet.create({
     color: theme.colors.white,
     fontWeight: '600',
     fontSize: 14,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 20,
+  },
+  emptyStateTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginTop: 20,
+    marginBottom: 12,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: theme.colors.textLight,
+    textAlign: 'center',
+    marginBottom: 28,
+    lineHeight: 22,
+  },
+  emptyStateButton: {
+    backgroundColor: theme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  emptyStateButtonText: {
+    color: theme.colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    bottom: 80,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: theme.colors.shadow,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  optionsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+  },
+  optionsModalContainer: {
+    backgroundColor: theme.colors.white,
+    borderRadius: 8,
+    width: 140,
+    ...Platform.select({
+      ios: {
+        shadowColor: theme.colors.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  optionText: {
+    fontSize: 15,
+    marginLeft: 12,
+    color: theme.colors.text,
+  },
+  optionDivider: {
+    height: 1,
+    backgroundColor: theme.colors.lightGray,
+    marginHorizontal: 8,
+  },
+  disabledSection: {
+    marginBottom: 16,
+  },
+  disabledTypeContainer: {
+    backgroundColor: theme.colors.lightGray,
+    borderRadius: 8,
+    padding: 12,
+  },
+  disabledTypeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  incomeTypeChip: {
+    backgroundColor: theme.colors.success,
+  },
+  expenseTypeChip: {
+    backgroundColor: theme.colors.error,
+  },
+  disabledTypeText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.white,
+  },
+  disabledHelperText: {
+    fontSize: 12,
+    color: theme.colors.textLight,
+    fontStyle: 'italic',
+    marginTop: 8,
+  },
+  disabledDateContainer: {
+    backgroundColor: theme.colors.lightGray,
+    borderRadius: 8,
+    padding: 12,
+  },
+  disabledDateText: {
+    fontSize: 16,
+    color: theme.colors.text,
   },
 });
 

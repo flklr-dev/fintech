@@ -275,7 +275,7 @@ router.get('/:id', async (req, res) => {
 // Create a new budget
 router.post('/', async (req, res) => {
   try {
-    const { startDate, endDate, amount, bypassIncomeCheck } = req.body;
+    const { startDate, endDate, amount } = req.body;
     const userId = req.user._id;
     
     console.log('Creating budget for user:', userId);
@@ -286,10 +286,7 @@ router.post('/', async (req, res) => {
       category: req.body.category 
     });
     
-    // Always use bypassIncomeCheck for now until we fix the issue
-    const shouldBypassCheck = true; // Force bypass for testing
-    
-    // Calculate total income for the budget period - using more flexible date handling
+    // Calculate total income for the budget period
     const start = new Date(startDate);
     const end = new Date(endDate);
     
@@ -307,7 +304,7 @@ router.post('/', async (req, res) => {
       end: end.toISOString()
     });
     
-    // Get total income - we'll calculate it but allow bypassing the validation
+    // Get total income
     const totalIncome = await calculateTotalIncome(userId, start, end);
     
     // Calculate total of existing budgets
@@ -320,8 +317,8 @@ router.post('/', async (req, res) => {
       wouldExceed: totalExistingBudgets + amount > totalIncome
     });
     
-    // Check if new budget would exceed total income - but allow bypass for testing
-    if (!shouldBypassCheck && totalExistingBudgets + amount > totalIncome) {
+    // Check if new budget would exceed total income
+    if (totalExistingBudgets + amount > totalIncome) {
       return res.status(400).json({
         status: 'error',
         message: `Total budgets (₱${(totalExistingBudgets + amount).toFixed(2)}) would exceed your available income (₱${totalIncome.toFixed(2)}) for this period. Please adjust your budget amount.`,
@@ -332,13 +329,9 @@ router.post('/', async (req, res) => {
         }
       });
     }
-
-    // Remove the bypass parameter before creating the budget
-    const budgetData = { ...req.body };
-    delete budgetData.bypassIncomeCheck;
     
     const budget = await Budget.create({
-      ...budgetData,
+      ...req.body,
       user: userId
     });
 
@@ -358,11 +351,8 @@ router.post('/', async (req, res) => {
 // Update a budget
 router.patch('/:id', async (req, res) => {
   try {
-    const { amount, bypassIncomeCheck } = req.body;
+    const { amount } = req.body;
     const userId = req.user._id;
-    
-    // Always use bypassIncomeCheck for now until we fix the issue
-    const shouldBypassCheck = true; // Force bypass for testing
     
     if (amount) {
       // Calculate total income for the budget period
@@ -402,8 +392,8 @@ router.patch('/:id', async (req, res) => {
         wouldExceed: totalOtherBudgets + amount > totalIncome
       });
       
-      // Check if updated budget would exceed total income - but allow bypass for testing
-      if (!shouldBypassCheck && totalOtherBudgets + amount > totalIncome) {
+      // Check if updated budget would exceed total income
+      if (totalOtherBudgets + amount > totalIncome) {
         return res.status(400).json({
           status: 'error',
           message: `Total budgets (₱${(totalOtherBudgets + amount).toFixed(2)}) would exceed your available income (₱${totalIncome.toFixed(2)}) for this period. Please adjust your budget amount.`,
@@ -416,16 +406,12 @@ router.patch('/:id', async (req, res) => {
       }
     }
 
-    // Remove the bypass parameter before updating the budget
-    const updateData = { ...req.body };
-    delete updateData.bypassIncomeCheck;
-
     const updatedBudget = await Budget.findOneAndUpdate(
       {
         _id: req.params.id,
         user: userId
       },
-      updateData,
+      req.body,
       {
         new: true,
         runValidators: true

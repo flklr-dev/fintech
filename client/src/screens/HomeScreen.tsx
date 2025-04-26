@@ -193,20 +193,37 @@ const HomeScreen = observer(() => {
   const fetchBudgets = async () => {
     try {
       const budgetsWithSpending = await budgetService.getBudgets();
-      setBudgets(budgetsWithSpending);
+      
+      // Sort budgets by percentage spent (closest to 100% first)
+      const sortedBudgets = [...budgetsWithSpending].sort((a, b) => {
+        const percentageA = calculatePercentage(a.currentSpending || 0, a.amount);
+        const percentageB = calculatePercentage(b.currentSpending || 0, b.amount);
+        
+        // Sort by how close to 100% each budget is (avoiding over-budget taking priority)
+        const distanceToFullA = Math.abs(100 - percentageA);
+        const distanceToFullB = Math.abs(100 - percentageB);
+        
+        // Put budgets close to 100% (but not over) at top, followed by over-budget items
+        if (percentageA <= 100 && percentageB > 100) return -1;
+        if (percentageA > 100 && percentageB <= 100) return 1;
+        
+        // Within each group (under or over budget), sort by closest to 100%
+        return distanceToFullA - distanceToFullB;
+      });
+      
+      setBudgets(sortedBudgets);
       
       // Calculate total budget allocations
       const totalBudgetAmount = budgetsWithSpending.reduce(
         (sum, budget) => sum + budget.amount, 0
       );
       
-      // Calculate total expenses linked to budgets
-      const budgetExpenses = budgetsWithSpending.reduce(
+      // Calculate remaining budget
+      const totalSpent = budgetsWithSpending.reduce(
         (sum, budget) => sum + (budget.currentSpending || 0), 0
       );
       
-      // Remaining budget is: Total budget allocations - expenses linked to budgets
-      setRemainingBudget(totalBudgetAmount - budgetExpenses);
+      setRemainingBudget(totalBudgetAmount - totalSpent);
     } catch (error) {
       console.error('Error fetching budgets:', error);
       throw error;
@@ -246,8 +263,8 @@ const HomeScreen = observer(() => {
   };
 
   const handleCreateBudget = () => {
-    // @ts-ignore - ignoring type mismatch for navigation params
-    navigation.navigate('Budget', { showAddModal: true });
+    // Navigate to the Budget screen
+    navigation.navigate('Budget' as any); // Using 'as any' to fix type issues
   };
 
   // Helper function to show dialog
@@ -289,7 +306,8 @@ const HomeScreen = observer(() => {
       'Salary': 'cash-outline',
       'Investment': 'trending-up-outline',
       'Bonus': 'gift-outline',
-      'Refund': 'arrow-undo-outline'
+      'Refund': 'arrow-undo-outline',
+      'Freelance': 'laptop-outline'
     };
     
     return iconMap[category] || 'help-circle-outline';
@@ -309,7 +327,8 @@ const HomeScreen = observer(() => {
       'Salary': '#4CAF50',
       'Investment': '#3F51B5',
       'Bonus': '#E91E63',
-      'Refund': '#009688'
+      'Refund': '#009688',
+      'Freelance': '#00BCD4'
     };
     
     return colorMap[category] || '#607D8B';
@@ -512,10 +531,16 @@ const HomeScreen = observer(() => {
                 const spent = budget.currentSpending || 0;
                 const percentage = calculatePercentage(spent, budget.amount);
                 const isOverBudget = spent > budget.amount;
+                const isCloseToLimit = percentage >= 85 && percentage <= 100;
                 const color = getCategoryColor(budget.category);
                 
                 return (
-                  <View key={budget._id || index} style={[styles.budgetItem, styles.cardShadow]}>
+                  <View key={budget._id || index} style={[
+                    styles.budgetItem, 
+                    styles.cardShadow,
+                    isCloseToLimit && styles.warningBudget,
+                    isOverBudget && styles.overBudgetItem
+                  ]}>
                     <View style={styles.budgetHeader}>
                       <View style={[styles.categoryIcon, { backgroundColor: color }]}>
                         <Ionicons 
@@ -536,6 +561,7 @@ const HomeScreen = observer(() => {
                       </View>
                       <Text style={[
                         styles.budgetPercentage, 
+                        isCloseToLimit ? styles.warningText : null,
                         isOverBudget ? styles.overBudget : styles.underBudget
                       ]}>
                         {percentage.toFixed(0)}%
@@ -545,11 +571,10 @@ const HomeScreen = observer(() => {
                     <View style={styles.progressBarContainer}>
                       <View 
                         style={[
-                          styles.progressBar, 
-                          { 
-                            width: `${percentage}%`,
-                            backgroundColor: isOverBudget ? theme.colors.error : color
-                          }
+                          styles.progressBar,
+                          isOverBudget ? styles.overBudgetBar : { backgroundColor: color },
+                          isCloseToLimit && !isOverBudget ? styles.warningBar : null,
+                          { width: `${Math.min(percentage, 100)}%` }
                         ]} 
                       />
                     </View>
@@ -558,12 +583,12 @@ const HomeScreen = observer(() => {
               })
             ) : (
               <View style={styles.emptyStateContainer}>
-                <Text style={styles.emptyStateText}>No budgets found</Text>
+                <Text style={styles.emptyStateText}>No budgets created yet</Text>
                 <TouchableOpacity 
-                  style={styles.emptyStateButton} 
+                  style={styles.createBudgetButton}
                   onPress={handleCreateBudget}
                 >
-                  <Text style={styles.emptyStateButtonText}>Create a Budget</Text>
+                  <Text style={styles.createBudgetText}>Create Budget</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -879,15 +904,33 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 12,
   },
-  emptyStateButton: {
+  createBudgetButton: {
     backgroundColor: theme.colors.primary,
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
   },
-  emptyStateButtonText: {
+  createBudgetText: {
     color: theme.colors.white,
     fontWeight: '600',
+  },
+  warningBudget: {
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.warning,
+  },
+  overBudgetItem: {
+    borderLeftWidth: 3,
+    borderLeftColor: theme.colors.error,
+  },
+  warningText: {
+    color: theme.colors.warning,
+    fontWeight: '700',
+  },
+  warningBar: {
+    backgroundColor: theme.colors.warning,
+  },
+  overBudgetBar: {
+    backgroundColor: theme.colors.error,
   },
 });
 

@@ -28,7 +28,6 @@ export interface CreateBudgetDTO {
     enabled: boolean;
     threshold: number;
   };
-  bypassIncomeCheck?: boolean;
 }
 
 export interface UpdateBudgetDTO extends Partial<CreateBudgetDTO> {}

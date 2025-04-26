@@ -17,8 +17,13 @@ export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
   Home: undefined;
-  Budget: undefined;
-  Transactions: undefined;
+  Budget: {
+    showAddModal?: boolean;
+    preselectedCategory?: string;
+  };
+  Transactions: {
+    showAddModal?: boolean;
+  };
   Reports: undefined;
 };
 

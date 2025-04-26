@@ -26,6 +26,7 @@ import { budgetService, Budget, CreateBudgetDTO } from '../services/budgetServic
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { useFocusEffect } from '@react-navigation/native';
+import MessageDialog from '../components/MessageDialog';
 
 // Currency formatter
 const formatCurrency = (amount: number) => {
@@ -246,11 +247,11 @@ const BudgetScreen = observer(() => {
   const handleNavigation = (screen: ScreenName) => {
     setActiveScreen(screen);
     if (screen === 'Home') {
-      navigation.navigate('Home');
+      navigation.navigate('Home' as any);
     } else if (screen === 'Transactions') {
-      navigation.navigate('Transactions');
+      navigation.navigate('Transactions' as any);
     } else if (screen === 'Reports') {
-      navigation.navigate('Reports');
+      navigation.navigate('Reports' as any);
     }
   };
   
@@ -259,20 +260,73 @@ const BudgetScreen = observer(() => {
   const totalSpent = budgets?.reduce((sum, budget) => sum + (budget.currentSpending || 0), 0) || 0;
   const totalRemaining = totalAllocated - totalSpent;
   
+  // Dialog state
+  const [dialogVisible, setDialogVisible] = useState(false);
+  const [dialogProps, setDialogProps] = useState({
+    type: 'success' as 'success' | 'error' | 'warning' | 'info',
+    title: '',
+    message: '',
+    actionText: '',
+    onAction: () => {},
+    autoDismiss: false,
+  });
+  
+  // Confirmation dialog state for delete
+  const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
+  
+  // Helper function to show dialog
+  const showDialog = ({ 
+    type, 
+    title, 
+    message, 
+    actionText, 
+    onAction,
+    autoDismiss = false 
+  }: {
+    type: 'success' | 'error' | 'warning' | 'info',
+    title: string,
+    message: string,
+    actionText?: string,
+    onAction?: () => void,
+    autoDismiss?: boolean
+  }) => {
+    setDialogProps({
+      type,
+      title,
+      message,
+      actionText: actionText || '',
+      onAction: onAction || (() => {}),
+      autoDismiss
+    });
+    setDialogVisible(true);
+  };
+  
   // Handle adding a new budget
   const handleAddBudget = async () => {
     if (!newBudgetName) {
-      Alert.alert('Error', 'Please select a category');
+      showDialog({
+        type: 'error',
+        title: 'Missing Category',
+        message: 'Please select a category for your budget.'
+      });
       return;
     }
     
     if (!newBudgetAmount.trim() || isNaN(Number(newBudgetAmount))) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      showDialog({
+        type: 'error',
+        title: 'Invalid Amount',
+        message: 'Please enter a valid budget amount.'
+      });
       return;
     }
     
     if (startDate >= endDate) {
-      Alert.alert('Error', 'Start date must be before end date');
+      showDialog({
+        type: 'error',
+        title: 'Invalid Date Range',
+        message: 'Start date must be before end date.'
+      });
       return;
     }
     
@@ -283,25 +337,18 @@ const BudgetScreen = observer(() => {
     );
     
     if (categoryExists) {
-      Alert.alert(
-        'Category Already Exists',
-        `You already have an active budget for "${newBudgetName}". Would you like to update it instead?`,
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel'
-          },
-          {
-            text: 'Update Existing',
-            onPress: () => {
-              // Close this modal and navigate to existing budget
-              setShowAddModal(false);
-              // Here you could add navigation to edit the existing budget
-              // or implement an edit flow
-            }
-          }
-        ]
-      );
+      showDialog({
+        type: 'warning',
+        title: 'Category Already Exists',
+        message: `You already have an active budget for "${newBudgetName}". Would you like to update it instead?`,
+        actionText: 'Update Existing',
+        onAction: () => {
+          // Close this modal and navigate to existing budget
+          setShowAddModal(false);
+          // Here you could add navigation to edit the existing budget
+          // or implement an edit flow
+        }
+      });
       return;
     }
     
@@ -325,14 +372,24 @@ const BudgetScreen = observer(() => {
       await budgetService.createBudget(budgetData);
       await fetchBudgets();
       
-      setNewBudgetName('');
-      setNewBudgetAmount('');
-      setShowAddModal(false);
-      Alert.alert('Success', 'Budget created successfully');
+    setNewBudgetName('');
+    setNewBudgetAmount('');
+    setShowAddModal(false);
+      
+      showDialog({
+        type: 'success',
+        title: 'Budget Created',
+        message: 'Your budget has been created successfully.',
+        autoDismiss: true
+      });
     } catch (error: any) {
       // Simplified error handling - directly show the error message from server
       const errorMessage = error?.response?.data?.message || 'Failed to create budget. Please try again.';
-      Alert.alert('Budget Error', errorMessage);
+      showDialog({
+        type: 'error',
+        title: 'Budget Error',
+        message: errorMessage
+      });
     }
   };
   
@@ -409,30 +466,32 @@ const BudgetScreen = observer(() => {
   const handleDeleteBudget = async () => {
     if (!selectedBudget) return;
     
-    Alert.alert(
-      "Delete Budget",
-      `Are you sure you want to delete the budget for "${selectedBudget.category}"?`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel"
-        },
-        { 
-          text: "Delete", 
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await budgetService.deleteBudget(selectedBudget._id);
-              setShowOptionsModal(false);
-              await fetchBudgets();
-              Alert.alert("Success", "Budget deleted successfully");
-            } catch (error) {
-              Alert.alert("Error", "Failed to delete budget");
-            }
-          }
-        }
-      ]
-    );
+    setDeleteDialogVisible(true);
+  };
+  
+  // Confirm budget deletion
+  const confirmDeleteBudget = async () => {
+    if (!selectedBudget) return;
+    
+    try {
+      await budgetService.deleteBudget(selectedBudget._id);
+      setShowOptionsModal(false);
+      setDeleteDialogVisible(false);
+      await fetchBudgets();
+      
+      showDialog({
+        type: 'success',
+        title: 'Budget Deleted',
+        message: 'Your budget has been deleted successfully.',
+        autoDismiss: true
+      });
+    } catch (error) {
+      showDialog({
+        type: 'error',
+        title: 'Error',
+        message: 'Failed to delete budget. Please try again.'
+      });
+    }
   };
 
   // Save edited budget
@@ -440,12 +499,20 @@ const BudgetScreen = observer(() => {
     if (!editBudgetId) return;
     
     if (!editBudgetAmount.trim() || isNaN(Number(editBudgetAmount))) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      showDialog({
+        type: 'error',
+        title: 'Invalid Amount',
+        message: 'Please enter a valid budget amount.'
+      });
       return;
     }
 
     if (editStartDate >= editEndDate) {
-      Alert.alert('Error', 'Start date must be before end date');
+      showDialog({
+        type: 'error',
+        title: 'Invalid Date Range',
+        message: 'Start date must be before end date.'
+      });
       return;
     }
     
@@ -461,11 +528,21 @@ const BudgetScreen = observer(() => {
       await budgetService.updateBudget(editBudgetId, updates);
       setShowEditModal(false);
       await fetchBudgets();
-      Alert.alert('Success', 'Budget updated successfully');
+      
+      showDialog({
+        type: 'success',
+        title: 'Budget Updated',
+        message: 'Your budget has been updated successfully.',
+        autoDismiss: true
+      });
     } catch (error: any) {
       // Simplified error handling - directly show the error message from server
       const errorMessage = error?.response?.data?.message || 'Failed to update budget. Please try again.';
-      Alert.alert('Budget Error', errorMessage);
+      showDialog({
+        type: 'error',
+        title: 'Budget Error',
+        message: errorMessage
+      });
     }
   };
 
@@ -663,7 +740,7 @@ const BudgetScreen = observer(() => {
           <Text style={styles.emptyStateButtonText}>Create Your First Budget</Text>
       </TouchableOpacity>
     </View>
-    );
+  );
   };
 
   // Update the modal content
@@ -914,6 +991,24 @@ const BudgetScreen = observer(() => {
     </Modal>
   );
 
+  // Check for navigation parameters
+  useEffect(() => {
+    // Access params through the route object
+    if (navigation.route && navigation.route.params) {
+      const { showAddModal: shouldShowAddModal, preselectedCategory } = navigation.route.params as any;
+      
+      // Show add modal if specified
+      if (shouldShowAddModal) {
+        setShowAddModal(true);
+      }
+      
+      // Set category if specified and valid
+      if (preselectedCategory && BUDGET_CATEGORIES.indexOf(preselectedCategory) >= 0) {
+        setNewBudgetName(preselectedCategory);
+      }
+    }
+  }, [navigation]);
+
   return (
     <SafeAreaView style={styles.container}>
       <AppHeader 
@@ -1016,6 +1111,28 @@ const BudgetScreen = observer(() => {
       {renderEditBudgetModal()}
       
       <BottomNavBar activeScreen={activeScreen} onPress={handleNavigation} />
+      
+      <MessageDialog
+        visible={dialogVisible}
+        type={dialogProps.type}
+        title={dialogProps.title}
+        message={dialogProps.message}
+        actionText={dialogProps.actionText}
+        onAction={dialogProps.onAction}
+        onDismiss={() => setDialogVisible(false)}
+        autoDismiss={dialogProps.autoDismiss}
+        autoDismissTimeout={1000}
+      />
+      
+      <MessageDialog
+        visible={deleteDialogVisible}
+        type="warning"
+        title="Confirm Deletion"
+        message={selectedBudget ? `Are you sure you want to delete the budget for "${selectedBudget.category}"?` : "Are you sure you want to delete this budget?"}
+        actionText="Delete"
+        onAction={confirmDeleteBudget}
+        onDismiss={() => setDeleteDialogVisible(false)}
+      />
     </SafeAreaView>
   );
 });

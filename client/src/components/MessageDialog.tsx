@@ -34,7 +34,7 @@ const MessageDialog: React.FC<MessageDialogProps> = ({
   onAction,
   actionText,
   autoDismiss = false,
-  autoDismissTimeout = 1500,
+  autoDismissTimeout = 3000,
 }) => {
   useEffect(() => {
     if (visible && autoDismiss) {
@@ -102,56 +102,62 @@ const MessageDialog: React.FC<MessageDialogProps> = ({
       animationType="fade"
       onRequestClose={onDismiss}
     >
-      <View style={styles.overlay}>
+      <TouchableOpacity 
+        style={styles.overlay}
+        activeOpacity={1}
+        onPress={onDismiss}
+      >
         <View style={styles.dialogContainer}>
-          <View style={styles.iconContainer}>
-            <View
-              style={[
-                styles.iconBackground,
-                { backgroundColor: getBackgroundColor() }
-              ]}
-            >
-              <Ionicons 
-                name={getIconName()} 
-                size={36} 
-                color={getIconColor()} 
-              />
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.iconContainer}>
+              <View
+                style={[
+                  styles.iconBackground,
+                  { backgroundColor: getBackgroundColor() }
+                ]}
+              >
+                <Ionicons 
+                  name={getIconName()} 
+                  size={36} 
+                  color={getIconColor()} 
+                />
+              </View>
             </View>
-          </View>
-          
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.message}>{message}</Text>
-          
-          {!autoDismiss && (
-            <View style={styles.buttonContainer}>
-              {onAction && actionText ? (
-                <>
+            
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.message}>{message}</Text>
+            
+            {!autoDismiss && (
+              <View style={styles.buttonContainer}>
+                {onAction && actionText ? (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.button, styles.dismissButton]}
+                      onPress={onDismiss}
+                    >
+                      <Text style={styles.dismissButtonText}>Dismiss</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={[styles.button, styles.actionButton, { backgroundColor: getIconColor() }]}
+                      onPress={onAction}
+                    >
+                      <Text style={styles.actionButtonText}>{actionText}</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
                   <TouchableOpacity
-                    style={[styles.button, styles.dismissButton]}
+                    style={[styles.button, styles.singleButton, { backgroundColor: getIconColor() }]}
                     onPress={onDismiss}
                   >
-                    <Text style={styles.dismissButtonText}>Dismiss</Text>
+                    <Text style={styles.actionButtonText}>Dismiss</Text>
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[styles.button, styles.actionButton, { backgroundColor: getIconColor() }]}
-                    onPress={onAction}
-                  >
-                    <Text style={styles.actionButtonText}>{actionText}</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.button, styles.singleButton, { backgroundColor: getIconColor() }]}
-                  onPress={onDismiss}
-                >
-                  <Text style={styles.actionButtonText}>Dismiss</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
+                )}
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
-      </View>
+      </TouchableOpacity>
     </Modal>
   );
 };
