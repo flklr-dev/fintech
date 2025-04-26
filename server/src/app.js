@@ -5,7 +5,10 @@ const helmet = require('helmet');
 const config = require('./config/config');
 const authRoutes = require('./routes/authRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
+const budgetRoutes = require('./routes/budgetRoutes');
 const rateLimiter = require('./middleware/rateLimit');
+const expenseRoutes = require('./routes/expenseRoutes');
+const incomeRoutes = require('./routes/incomeRoutes');
 
 // Initialize Express app
 const app = express();
@@ -34,6 +37,9 @@ app.use(cors());
 // Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
+app.use('/api/v1/budgets', budgetRoutes);
+app.use('/api/v1/expenses', expenseRoutes);
+app.use('/api/v1/income', incomeRoutes);
 
 // Handle undefined routes
 app.all('*', (req, res) => {

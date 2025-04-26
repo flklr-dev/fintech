@@ -119,7 +119,7 @@ const TransactionsScreen = observer(() => {
       setRefreshing(false);
     }, 1500);
   };
-
+  
   const handleNavigation = (screen: ScreenName) => {
     setActiveScreen(screen);
     if (screen === 'Home') {

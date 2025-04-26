@@ -23,7 +23,7 @@ import { PieChart } from 'react-native-chart-kit';
 import { LineChart } from 'react-native-chart-kit';
 
 const { width } = Dimensions.get('window');
-const CHART_WIDTH = width - 32;
+const CHART_WIDTH = width - 48;
 const CHART_HEIGHT = 220;
 
 // Demo data for charts
@@ -65,7 +65,7 @@ const ReportsScreen = observer(() => {
       setRefreshing(false);
     }, 1500);
   };
-
+  
   const handleNavigation = (screen: ScreenName) => {
     setActiveScreen(screen);
     if (screen === 'Home') {
@@ -169,46 +169,56 @@ const ReportsScreen = observer(() => {
         {/* Spending Breakdown Chart */}
         <View style={[styles.chartContainer, styles.cardShadow]}>
           <Text style={styles.chartTitle}>Spending by Category</Text>
-          <PieChart
-            data={spendingData}
-            width={CHART_WIDTH}
-            height={CHART_HEIGHT}
-            chartConfig={{
-              backgroundColor: theme.colors.white,
-              backgroundGradientFrom: theme.colors.white,
-              backgroundGradientTo: theme.colors.white,
-              color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-            }}
-            accessor="amount"
-            backgroundColor="transparent"
-            paddingLeft="15"
-            absolute
-          />
+          <View style={styles.pieChartContainer}>
+            <PieChart
+              data={spendingData}
+              width={CHART_WIDTH + 60}
+              height={CHART_HEIGHT}
+              chartConfig={{
+                backgroundColor: theme.colors.white,
+                backgroundGradientFrom: theme.colors.white,
+                backgroundGradientTo: theme.colors.white,
+                color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+              }}
+              accessor="amount"
+              backgroundColor="transparent"
+              paddingLeft="15"
+              absolute
+              center={[CHART_WIDTH / 8, 0]}
+              hasLegend={true}
+              style={{
+                marginLeft: -60,
+              }}
+            />
+          </View>
         </View>
 
         {/* Income vs Expense Chart */}
         <View style={[styles.chartContainer, styles.cardShadow]}>
           <Text style={styles.chartTitle}>Income vs Expenses</Text>
-          <LineChart
-            data={incomeExpenseData}
-            width={CHART_WIDTH}
-            height={CHART_HEIGHT}
-            chartConfig={{
-              backgroundColor: theme.colors.white,
-              backgroundGradientFrom: theme.colors.white,
-              backgroundGradientTo: theme.colors.white,
-              decimalPlaces: 0,
-              color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-              style: {
+          <View style={styles.lineChartContainer}>
+            <LineChart
+              data={incomeExpenseData}
+              width={CHART_WIDTH}
+              height={CHART_HEIGHT}
+              chartConfig={{
+                backgroundColor: theme.colors.white,
+                backgroundGradientFrom: theme.colors.white,
+                backgroundGradientTo: theme.colors.white,
+                decimalPlaces: 0,
+                color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                style: {
+                  borderRadius: 16,
+                },
+              }}
+              bezier
+              style={{
+                marginVertical: 8,
                 borderRadius: 16,
-              },
-            }}
-            bezier
-            style={{
-              marginVertical: 8,
-              borderRadius: 16,
-            }}
-          />
+                marginLeft: -20,
+              }}
+            />
+          </View>
         </View>
 
         {/* Budget Utilization */}
@@ -258,7 +268,7 @@ const ReportsScreen = observer(() => {
               </TouchableOpacity>
             );
           })}
-        </View>
+      </View>
       </ScrollView>
       
       <BottomNavBar activeScreen={activeScreen} onPress={handleNavigation} />
@@ -361,6 +371,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginHorizontal: 16,
     marginBottom: 16,
+    overflow: 'hidden',
   },
   chartTitle: {
     fontSize: 16,
@@ -425,6 +436,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.colors.textLight,
     marginBottom: 4,
+  },
+  pieChartContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    overflow: 'hidden',
+  },
+  lineChartContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    overflow: 'hidden',
   },
 });
 
