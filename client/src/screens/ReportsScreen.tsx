@@ -10,7 +10,8 @@ import {
   Platform,
   Dimensions,
   Share,
-  Alert
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { observer } from 'mobx-react';
@@ -21,59 +22,320 @@ import BottomNavBar from '../components/BottomNavBar';
 import { ScreenName } from '../components/BottomNavBar';
 import { PieChart } from 'react-native-chart-kit';
 import { LineChart } from 'react-native-chart-kit';
+import api from '../api/api';
+import { budgetService } from '../services/budgetService';
+import { useFocusEffect } from '@react-navigation/native';
+import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 
 const { width } = Dimensions.get('window');
 const CHART_WIDTH = width - 48;
-const CHART_HEIGHT = 220;
+const CHART_HEIGHT = Math.min(220, width * 0.6);
 
-// Demo data for charts
-const spendingData = [
-  { name: 'Food & Dining', amount: 500, color: '#4CAF50', legendFontColor: theme.colors.text, legendFontSize: 12 },
-  { name: 'Transport', amount: 300, color: '#2196F3', legendFontColor: theme.colors.text, legendFontSize: 12 },
-  { name: 'Utilities', amount: 200, color: '#FF9800', legendFontColor: theme.colors.text, legendFontSize: 12 },
-  { name: 'Entertainment', amount: 150, color: '#E91E63', legendFontColor: theme.colors.text, legendFontSize: 12 },
-  { name: 'Shopping', amount: 250, color: '#9C27B0', legendFontColor: theme.colors.text, legendFontSize: 12 },
-];
-
-const incomeExpenseData = {
-  labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-  datasets: [
-    {
-      data: [3000, 3200, 2800, 3500, 3000, 3300],
-      color: (opacity = 1) => theme.colors.success,
-      strokeWidth: 2
-    },
-    {
-      data: [2500, 2800, 2600, 3000, 2700, 2900],
-      color: (opacity = 1) => theme.colors.error,
-      strokeWidth: 2
-    }
-  ]
+// Format currency helper
+const formatCurrency = (amount: number) => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(amount);
 };
 
 const ReportsScreen = observer(() => {
   const navigation = useNavigation();
   const [activeScreen, setActiveScreen] = useState<ScreenName>('Reports');
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState('Monthly');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  
+  // Data states
+  const [spendingByCategory, setSpendingByCategory] = useState<any[]>([]);
+  const [incomeVsExpenseData, setIncomeVsExpenseData] = useState<any>({
+    labels: [],
+    datasets: [{ data: [] }, { data: [] }]
+  });
+  const [budgets, setBudgets] = useState<any[]>([]);
+  const [totalIncome, setTotalIncome] = useState(0);
+  const [totalExpense, setTotalExpense] = useState(0);
+  const [hasData, setHasData] = useState(false);
+
+  // Colors for categories
+  const categoryColors = {
+    'Food & Dining': '#4CAF50',
+    'Transport': '#2196F3',
+    'Utilities': '#FF9800',
+    'Entertainment': '#9C27B0',
+    'Shopping': '#3F51B5',
+    'Healthcare': '#E91E63',
+    'Education': '#009688',
+    'Other': '#607D8B'
+  };
+
+  // Use useFocusEffect to refresh data when the screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchAllData();
+      return () => {
+        // Cleanup if needed
+      };
+    }, [selectedPeriod])
+  );
+
+  // Improved check for data existence
+  useEffect(() => {
+    // This effect runs whenever relevant data changes
+    const dataExists = 
+      totalIncome > 0 || 
+      totalExpense > 0 || 
+      budgets.length > 0 || 
+      spendingByCategory.length > 0;
+    
+    console.log('Data check in effect:', { 
+      totalIncome, 
+      totalExpense, 
+      budgetsLength: budgets.length,
+      categoriesLength: spendingByCategory.length,
+      dataExists
+    });
+    
+    setHasData(dataExists);
+  }, [totalIncome, totalExpense, budgets.length, spendingByCategory.length]);
+
+  const fetchAllData = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        fetchTransactionData(),
+        fetchBudgetData()
+      ]);
+    } catch (error) {
+      console.error('Error fetching report data:', error);
+      Alert.alert('Error', 'Failed to load report data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTransactionData = async () => {
+    try {
+      // Get date range based on selected period
+      const { startDate, endDate } = getDateRangeForPeriod(selectedPeriod);
+      
+      console.log(`Fetching transactions for ${selectedPeriod}: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+      
+      // Fetch transactions within date range
+      const response = await api.get('/transactions', {
+        params: { 
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString()
+        }
+      });
+      
+      if (!response.data || !response.data.data || !response.data.data.transactions) {
+        console.error('Invalid transaction data format:', response.data);
+        throw new Error('Invalid transaction data returned from API');
+      }
+      
+      const transactions = response.data.data.transactions;
+      console.log('Transactions fetched:', transactions.length);
+      
+      // Process spending by category data
+      processSpendingByCategory(transactions);
+      
+      // Process income vs expense data
+      processIncomeVsExpenseData(transactions);
+      
+    } catch (error) {
+      console.error('Error fetching transaction data:', error);
+      throw error;
+    }
+  };
+
+  const fetchBudgetData = async () => {
+    try {
+      const budgetsData = await budgetService.getBudgets();
+      console.log('Budgets fetched:', budgetsData?.length || 0);
+      setBudgets(budgetsData || []);
+    } catch (error) {
+      console.error('Error fetching budget data:', error);
+      throw error;
+    }
+  };
+
+  const getDateRangeForPeriod = (period: string) => {
+    const now = new Date();
+    let startDate = new Date();
+    let endDate = new Date();
+    
+    switch (period) {
+      case 'Weekly':
+        startDate = new Date(now.setDate(now.getDate() - 7));
+        endDate = new Date();
+        break;
+      case 'Monthly':
+        startDate = startOfMonth(now);
+        endDate = endOfMonth(now);
+        break;
+      case 'Yearly':
+        startDate = new Date(now.getFullYear(), 0, 1);
+        endDate = new Date(now.getFullYear(), 11, 31);
+        break;
+      case 'Custom':
+        // For now, default to last 3 months
+        startDate = subMonths(startOfMonth(now), 2);
+        endDate = endOfMonth(now);
+        break;
+      default:
+        startDate = startOfMonth(now);
+        endDate = endOfMonth(now);
+    }
+    
+    return { startDate, endDate };
+  };
+
+  const processSpendingByCategory = (transactions: any[]) => {
+    // Filter expenses only
+    const expenses = transactions.filter(t => t.type === 'expense');
+    
+    console.log('Processing expenses:', expenses.length);
+    
+    // Group expenses by category
+    const categoryMap = new Map<string, number>();
+    
+    expenses.forEach(expense => {
+      const category = expense.category || 'Other';
+      const amount = expense.amount || 0;
+      
+      if (categoryMap.has(category)) {
+        categoryMap.set(category, categoryMap.get(category)! + amount);
+      } else {
+        categoryMap.set(category, amount);
+      }
+    });
+    
+    // Convert map to array of objects for the chart
+    const categoryData = Array.from(categoryMap.entries()).map(([name, amount]) => ({
+      name,
+      amount,
+      color: categoryColors[name as keyof typeof categoryColors] || '#607D8B',
+      legendFontColor: theme.colors.text,
+      legendFontSize: 12
+    }));
+    
+    // Sort by amount in descending order
+    categoryData.sort((a, b) => b.amount - a.amount);
+    
+    // Limit number of categories for smaller screens
+    // On small screens, show top categories and group the rest as "Other"
+    const maxCategories = width < 360 ? 4 : 6;
+    if (categoryData.length > maxCategories) {
+      const topCategories = categoryData.slice(0, maxCategories - 1);
+      const otherCategories = categoryData.slice(maxCategories - 1);
+      
+      const otherAmount = otherCategories.reduce((sum, cat) => sum + cat.amount, 0);
+      if (otherAmount > 0) {
+        topCategories.push({
+          name: 'Other categories',
+          amount: otherAmount,
+          color: '#607D8B',
+          legendFontColor: theme.colors.text,
+          legendFontSize: 12
+        });
+      }
+      
+      console.log(`Limiting categories from ${categoryData.length} to ${topCategories.length} for small screen`);
+      console.log('Spending categories processed:', topCategories.length);
+      setSpendingByCategory(topCategories);
+    } else {
+      console.log('Spending categories processed:', categoryData.length);
+      setSpendingByCategory(categoryData);
+    }
+  };
+
+  const processIncomeVsExpenseData = (transactions: any[]) => {
+    // For monthly/yearly view, group by month
+    // For weekly view, group by day
+    
+    // For simplicity, we'll implement monthly view for now
+    const incomeByMonth = new Map<string, number>();
+    const expenseByMonth = new Map<string, number>();
+    
+    // Initialize with last 6 months
+    const months: string[] = [];
+    const now = new Date();
+    
+    for (let i = 5; i >= 0; i--) {
+      const month = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthKey = format(month, 'MMM');
+      months.push(monthKey);
+      incomeByMonth.set(monthKey, 0);
+      expenseByMonth.set(monthKey, 0);
+    }
+    
+    // Process transactions
+    transactions.forEach(transaction => {
+      const date = new Date(transaction.date);
+      const monthKey = format(date, 'MMM');
+      
+      // Only process if it's within our display range
+      if (months.includes(monthKey)) {
+        if (transaction.type === 'income') {
+          incomeByMonth.set(monthKey, (incomeByMonth.get(monthKey) || 0) + transaction.amount);
+        } else {
+          expenseByMonth.set(monthKey, (expenseByMonth.get(monthKey) || 0) + transaction.amount);
+        }
+      }
+    });
+    
+    // Prepare data for chart
+    const labels = months;
+    const incomeData = months.map(month => incomeByMonth.get(month) || 0);
+    const expenseData = months.map(month => expenseByMonth.get(month) || 0);
+    
+    // Calculate totals
+    const totalInc = incomeData.reduce((sum, amount) => sum + amount, 0);
+    const totalExp = expenseData.reduce((sum, amount) => sum + amount, 0);
+    
+    setTotalIncome(totalInc);
+    setTotalExpense(totalExp);
+    
+    setIncomeVsExpenseData({
+      labels,
+      datasets: [
+        {
+          data: incomeData,
+          color: (opacity = 1) => theme.colors.success,
+          strokeWidth: 2
+        },
+        {
+          data: expenseData,
+          color: (opacity = 1) => theme.colors.error,
+          strokeWidth: 2
+        }
+      ]
+    });
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Fetch latest reports data here
-    setTimeout(() => {
+    try {
+      await fetchAllData();
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
       setRefreshing(false);
-    }, 1500);
+    }
   };
   
   const handleNavigation = (screen: ScreenName) => {
     setActiveScreen(screen);
     if (screen === 'Home') {
-      navigation.navigate('Home');
+      navigation.navigate('Home' as any);
     } else if (screen === 'Budget') {
-      navigation.navigate('Budget');
+      navigation.navigate('Budget' as any);
     } else if (screen === 'Transactions') {
-      navigation.navigate('Transactions');
+      navigation.navigate('Transactions' as any);
     }
   };
 
@@ -92,14 +354,72 @@ const ReportsScreen = observer(() => {
     setSelectedCategory(category === selectedCategory ? null : category);
   };
 
-  // Calculate total amounts
-  const totalIncome = incomeExpenseData.datasets[0].data.reduce((a, b) => a + b, 0);
-  const totalExpense = incomeExpenseData.datasets[1].data.reduce((a, b) => a + b, 0);
+  // Calculate net savings
   const netSavings = totalIncome - totalExpense;
-  const highestSpendingCategory = spendingData.reduce((prev, current) => 
-    (prev.amount > current.amount) ? prev : current
-  );
+  
+  // Get highest spending category
+  const highestSpendingCategory = spendingByCategory[0] || { name: 'None', amount: 0 };
 
+  // Force check for data in the render function
+  const checkHasData = () => {
+    const calculatedHasData = 
+      totalIncome > 0 || 
+      totalExpense > 0 || 
+      budgets.length > 0 || 
+      spendingByCategory.length > 0;
+    
+    return calculatedHasData;
+  };
+
+  // Render loading state
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <AppHeader showNotifications={true} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.loadingText}>Loading financial insights...</Text>
+        </View>
+        <BottomNavBar activeScreen={activeScreen} onPress={handleNavigation} />
+      </SafeAreaView>
+    );
+  }
+
+  // Render empty state for new users - use direct check instead of state
+  if (!checkHasData()) {
+    console.log('Rendering empty state (direct check)');
+    return (
+      <SafeAreaView style={styles.container}>
+        <AppHeader 
+          showBackButton={false}
+          showNotifications={true}
+        />
+        
+        <View style={styles.headerContainer}>
+          <Text style={styles.screenTitle}>Financial Insights</Text>
+        </View>
+        
+        <View style={styles.emptyStateContainer}>
+          <Ionicons name="analytics-outline" size={80} color={theme.colors.gray} />
+          <Text style={styles.emptyStateTitle}>No data yet</Text>
+          <Text style={styles.emptyStateText}>
+            Start adding transactions to see your financial reports and insights
+          </Text>
+          <TouchableOpacity 
+            style={styles.emptyStateButton}
+            onPress={() => navigation.navigate('Transactions' as any, { showAddModal: true })}
+          >
+            <Ionicons name="add-circle-outline" size={20} color="#fff" />
+            <Text style={styles.emptyStateButtonText}>Add Your First Transaction</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <BottomNavBar activeScreen={activeScreen} onPress={handleNavigation} />
+      </SafeAreaView>
+    );
+  }
+
+  console.log('Rendering regular view, hasData=true or loading=true', { hasData, loading });
   return (
     <SafeAreaView style={styles.container}>
       <AppHeader 
@@ -149,125 +469,210 @@ const ReportsScreen = observer(() => {
           <View style={[styles.metricCard, styles.cardShadow]}>
             <Text style={styles.metricLabel}>Total Income</Text>
             <Text style={[styles.metricValue, styles.incomeValue]}>
-              ${totalIncome.toLocaleString()}
+              {formatCurrency(totalIncome)}
             </Text>
           </View>
           <View style={[styles.metricCard, styles.cardShadow]}>
             <Text style={styles.metricLabel}>Total Expenses</Text>
             <Text style={[styles.metricValue, styles.expenseValue]}>
-              ${totalExpense.toLocaleString()}
+              {formatCurrency(totalExpense)}
             </Text>
           </View>
           <View style={[styles.metricCard, styles.cardShadow]}>
             <Text style={styles.metricLabel}>Net Savings</Text>
             <Text style={[styles.metricValue, netSavings >= 0 ? styles.incomeValue : styles.expenseValue]}>
-              ${Math.abs(netSavings).toLocaleString()}
+              {formatCurrency(Math.abs(netSavings))}
             </Text>
           </View>
         </View>
 
         {/* Spending Breakdown Chart */}
-        <View style={[styles.chartContainer, styles.cardShadow]}>
-          <Text style={styles.chartTitle}>Spending by Category</Text>
-          <View style={styles.pieChartContainer}>
-            <PieChart
-              data={spendingData}
-              width={CHART_WIDTH + 60}
-              height={CHART_HEIGHT}
-              chartConfig={{
-                backgroundColor: theme.colors.white,
-                backgroundGradientFrom: theme.colors.white,
-                backgroundGradientTo: theme.colors.white,
-                color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-              }}
-              accessor="amount"
-              backgroundColor="transparent"
-              paddingLeft="15"
-              absolute
-              center={[CHART_WIDTH / 8, 0]}
-              hasLegend={true}
-              style={{
-                marginLeft: -60,
-              }}
-            />
+        {spendingByCategory.length > 0 ? (
+          <View style={[styles.chartContainer, styles.cardShadow]}>
+            <Text style={styles.chartTitle}>Spending by Category</Text>
+            <View style={styles.pieChartContainer}>
+              <PieChart
+                data={spendingByCategory.map(category => ({
+                  ...category,
+                  // Make text smaller on small screens
+                  legendFontSize: width < 360 ? 10 : 12
+                }))}
+                width={CHART_WIDTH}
+                height={CHART_HEIGHT}
+                chartConfig={{
+                  backgroundColor: theme.colors.white,
+                  backgroundGradientFrom: theme.colors.white,
+                  backgroundGradientTo: theme.colors.white,
+                  color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                }}
+                accessor="amount"
+                backgroundColor="transparent"
+                paddingLeft="0"
+                absolute
+                center={[CHART_WIDTH/2 - 140, 0]}
+                hasLegend={true}
+              />
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={[styles.chartContainer, styles.cardShadow]}>
+            <Text style={styles.chartTitle}>Spending by Category</Text>
+            <View style={styles.noChartDataContainer}>
+              <Text style={styles.noDataText}>No expense data for this period</Text>
+            </View>
+          </View>
+        )}
 
         {/* Income vs Expense Chart */}
-        <View style={[styles.chartContainer, styles.cardShadow]}>
-          <Text style={styles.chartTitle}>Income vs Expenses</Text>
-          <View style={styles.lineChartContainer}>
-            <LineChart
-              data={incomeExpenseData}
-              width={CHART_WIDTH}
-              height={CHART_HEIGHT}
-              chartConfig={{
-                backgroundColor: theme.colors.white,
-                backgroundGradientFrom: theme.colors.white,
-                backgroundGradientTo: theme.colors.white,
-                decimalPlaces: 0,
-                color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                style: {
+        {incomeVsExpenseData.labels.length > 0 ? (
+          <View style={[styles.chartContainer, styles.cardShadow]}>
+            <Text style={styles.chartTitle}>Income vs Expenses</Text>
+            <View style={styles.lineChartContainer}>
+              <LineChart
+                data={incomeVsExpenseData}
+                width={CHART_WIDTH}
+                height={CHART_HEIGHT}
+                chartConfig={{
+                  backgroundColor: theme.colors.white,
+                  backgroundGradientFrom: theme.colors.white,
+                  backgroundGradientTo: theme.colors.white,
+                  decimalPlaces: 0,
+                  color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                  labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                  style: {
+                    borderRadius: 16,
+                  },
+                  propsForDots: {
+                    r: "6",
+                    strokeWidth: "2",
+                  }
+                }}
+                bezier
+                style={{
+                  marginVertical: 8,
                   borderRadius: 16,
-                },
-              }}
-              bezier
-              style={{
-                marginVertical: 8,
-                borderRadius: 16,
-                marginLeft: -20,
-              }}
-            />
+                  marginLeft: -20,
+                }}
+              />
+              <View style={styles.chartLegend}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: theme.colors.success }]} />
+                  <Text style={styles.legendText}>Income</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.legendDot, { backgroundColor: theme.colors.error }]} />
+                  <Text style={styles.legendText}>Expenses</Text>
+                </View>
+              </View>
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={[styles.chartContainer, styles.cardShadow]}>
+            <Text style={styles.chartTitle}>Income vs Expenses</Text>
+            <View style={styles.noChartDataContainer}>
+              <Text style={styles.noDataText}>No transaction data for this period</Text>
+            </View>
+          </View>
+        )}
 
         {/* Budget Utilization */}
         <View style={[styles.budgetContainer, styles.cardShadow]}>
           <Text style={styles.sectionTitle}>Budget Utilization</Text>
-          {spendingData.map((category, index) => {
-            const percentage = (category.amount / 1000) * 100; // Assuming 1000 as budget
-            const isOverBudget = percentage > 100;
-            const isNearBudget = percentage > 80 && percentage <= 100;
-            
-            return (
-              <TouchableOpacity
-                key={index}
-                style={styles.budgetItem}
-                onPress={() => handleCategoryPress(category.name)}
-              >
-                <View style={styles.budgetHeader}>
-                  <View style={[styles.categoryDot, { backgroundColor: category.color }]} />
-                  <Text style={styles.categoryName}>{category.name}</Text>
-                  <Text style={styles.budgetAmount}>${category.amount}</Text>
-                </View>
-                <View style={styles.progressBarContainer}>
-                  <View 
-                    style={[
-                      styles.progressBar,
-                      { 
-                        width: `${Math.min(percentage, 100)}%`,
-                        backgroundColor: isOverBudget 
-                          ? theme.colors.error 
-                          : isNearBudget 
-                            ? theme.colors.warning 
-                            : theme.colors.success
-                      }
-                    ]} 
-                  />
-                </View>
-                {selectedCategory === category.name && (
-                  <View style={styles.budgetDetails}>
-                    <Text style={styles.budgetDetailText}>
-                      Budget: $1,000
-                    </Text>
-                    <Text style={styles.budgetDetailText}>
-                      Remaining: ${(1000 - category.amount).toFixed(2)}
-                    </Text>
+          
+          {budgets.length > 0 ? (
+            budgets.map((budget, index) => {
+              const spent = budget.currentSpending || 0;
+              const allocated = budget.amount || 0;
+              const percentage = allocated > 0 ? (spent / allocated) * 100 : 0;
+              const isOverBudget = percentage > 100;
+              const isNearBudget = percentage > 80 && percentage <= 100;
+              const budgetStatus = isOverBudget ? 'exceeded' : isNearBudget ? 'warning' : 'safe';
+              
+              return (
+                <TouchableOpacity
+                  key={budget._id || index}
+                  style={styles.budgetItem}
+                  onPress={() => handleCategoryPress(budget.category)}
+                >
+                  <View style={styles.budgetHeader}>
+                    <View style={[
+                      styles.categoryDot, 
+                      { backgroundColor: categoryColors[budget.category as keyof typeof categoryColors] || '#607D8B' }
+                    ]} />
+                    <Text style={styles.categoryName}>{budget.category}</Text>
+                    <Text style={styles.budgetAmount}>{formatCurrency(spent)}</Text>
                   </View>
-                )}
+                  <View style={styles.progressBarContainer}>
+                    <View 
+                      style={[
+                        styles.progressBar,
+                        { 
+                          width: `${Math.min(percentage, 100)}%`,
+                          backgroundColor: isOverBudget 
+                            ? theme.colors.error 
+                            : isNearBudget 
+                              ? theme.colors.warning 
+                              : theme.colors.success
+                        }
+                      ]} 
+                    />
+                  </View>
+                  
+                  {selectedCategory === budget.category && (
+                    <View style={styles.budgetDetails}>
+                      <View style={styles.budgetDetailRow}>
+                        <Text style={styles.budgetDetailLabel}>Allocated:</Text>
+                        <Text style={styles.budgetDetailValue}>{formatCurrency(allocated)}</Text>
+                      </View>
+                      <View style={styles.budgetDetailRow}>
+                        <Text style={styles.budgetDetailLabel}>Spent:</Text>
+                        <Text style={[
+                          styles.budgetDetailValue,
+                          isOverBudget && styles.redText
+                        ]}>{formatCurrency(spent)}</Text>
+                      </View>
+                      <View style={styles.budgetDetailRow}>
+                        <Text style={styles.budgetDetailLabel}>Remaining:</Text>
+                        <Text style={[
+                          styles.budgetDetailValue,
+                          isOverBudget ? styles.redText : styles.greenText
+                        ]}>{formatCurrency(allocated - spent)}</Text>
+                      </View>
+                      <View style={styles.budgetDetailRow}>
+                        <Text style={styles.budgetDetailLabel}>Utilization:</Text>
+                        <Text style={[
+                          styles.budgetDetailValue,
+                          isOverBudget ? styles.redText : isNearBudget ? styles.yellowText : styles.greenText
+                        ]}>{percentage.toFixed(1)}%</Text>
+                      </View>
+                      {isOverBudget && (
+                        <View style={styles.budgetStatusTag}>
+                          <Ionicons name="alert-circle" size={14} color="#fff" />
+                          <Text style={styles.budgetStatusText}>Over Budget</Text>
+                        </View>
+                      )}
+                      {isNearBudget && (
+                        <View style={[styles.budgetStatusTag, styles.warningTag]}>
+                          <Ionicons name="warning" size={14} color="#fff" />
+                          <Text style={styles.budgetStatusText}>Near Limit</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })
+          ) : (
+            <View style={styles.noBudgetContainer}>
+              <Text style={styles.noBudgetText}>No budgets created yet</Text>
+              <TouchableOpacity 
+                style={styles.createBudgetButton}
+                onPress={() => navigation.navigate('Budget' as any)}
+              >
+                <Text style={styles.createBudgetText}>Create Budget</Text>
               </TouchableOpacity>
-            );
-          })}
+            </View>
+          )}
       </View>
       </ScrollView>
       
@@ -296,6 +701,16 @@ const styles = StyleSheet.create({
   },
   exportButton: {
     padding: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    color: theme.colors.textLight,
+    fontSize: 16,
   },
   scrollView: {
     flex: 1,
@@ -379,6 +794,16 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: 16,
   },
+  noChartDataContainer: {
+    height: 180,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noDataText: {
+    fontSize: 16,
+    color: theme.colors.textLight,
+    textAlign: 'center',
+  },
   budgetContainer: {
     backgroundColor: theme.colors.white,
     borderRadius: 16,
@@ -428,7 +853,7 @@ const styles = StyleSheet.create({
   },
   budgetDetails: {
     marginTop: 8,
-    padding: 8,
+    padding: 12,
     backgroundColor: theme.colors.lightGray,
     borderRadius: 8,
   },
@@ -437,11 +862,54 @@ const styles = StyleSheet.create({
     color: theme.colors.textLight,
     marginBottom: 4,
   },
+  budgetDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  budgetDetailLabel: {
+    fontSize: 13,
+    color: theme.colors.textLight,
+  },
+  budgetDetailValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  redText: {
+    color: theme.colors.error,
+  },
+  yellowText: {
+    color: theme.colors.warning,
+  },
+  greenText: {
+    color: theme.colors.success,
+  },
+  budgetStatusTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.error,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  warningTag: {
+    backgroundColor: theme.colors.warning,
+  },
+  budgetStatusText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '500',
+    marginLeft: 4,
+  },
   pieChartContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
     overflow: 'hidden',
+    marginBottom: 10,
   },
   lineChartContainer: {
     alignItems: 'center',
@@ -449,6 +917,79 @@ const styles = StyleSheet.create({
     width: '100%',
     overflow: 'hidden',
   },
+  chartLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 10,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 4,
+  },
+  legendText: {
+    fontSize: 12,
+    color: theme.colors.textLight,
+  },
+  noBudgetContainer: {
+    alignItems: 'center',
+    padding: 24,
+  },
+  noBudgetText: {
+    fontSize: 14,
+    color: theme.colors.textLight,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  createBudgetButton: {
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  createBudgetText: {
+    color: theme.colors.white,
+    fontWeight: '600',
+  },
+  emptyStateContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  emptyStateTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: theme.colors.textLight,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  emptyStateButton: {
+    backgroundColor: theme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+  },
+  emptyStateButtonText: {
+    color: theme.colors.white,
+    fontWeight: '600',
+    marginLeft: 8,
+  }
 });
 
 export default ReportsScreen; 
