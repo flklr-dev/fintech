@@ -3,7 +3,7 @@ const Transaction = require('../models/Transaction');
 // Get all transactions for a user
 exports.getAllTransactions = async (req, res) => {
   try {
-    const transactions = await Transaction.find({ user: req.user.id });
+    const transactions = await Transaction.find({ user: req.user._id });
     
     res.status(200).json({
       status: 'success',
@@ -25,7 +25,7 @@ exports.getTransaction = async (req, res) => {
   try {
     const transaction = await Transaction.findOne({
       _id: req.params.id,
-      user: req.user.id
+      user: req.user._id
     });
     
     if (!transaction) {
@@ -53,7 +53,7 @@ exports.getTransaction = async (req, res) => {
 exports.createTransaction = async (req, res) => {
   try {
     // Add user ID to the transaction
-    req.body.user = req.user.id;
+    req.body.user = req.user._id;
     
     const newTransaction = await Transaction.create(req.body);
     
@@ -77,7 +77,7 @@ exports.updateTransaction = async (req, res) => {
     const transaction = await Transaction.findOneAndUpdate(
       {
         _id: req.params.id,
-        user: req.user.id
+        user: req.user._id
       },
       req.body,
       {
@@ -112,7 +112,7 @@ exports.deleteTransaction = async (req, res) => {
   try {
     const transaction = await Transaction.findOneAndDelete({
       _id: req.params.id,
-      user: req.user.id
+      user: req.user._id
     });
     
     if (!transaction) {

@@ -59,7 +59,6 @@ exports.getBudgets = catchAsync(async (req, res) => {
 
   console.log('Budget query:', query);
   const budgets = await Budget.find(query);
-  console.log('Found budgets count:', budgets.length);
 
   // Calculate current spending for each budget
   const budgetsWithSpending = await Promise.all(budgets.map(async (budget) => {

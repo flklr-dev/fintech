@@ -8,7 +8,8 @@ import {
   SafeAreaView,
   RefreshControl,
   Dimensions,
-  Platform
+  Platform,
+  ActivityIndicator
 } from 'react-native';
 import { observer } from 'mobx-react';
 import { runInAction } from 'mobx';
@@ -21,14 +22,38 @@ import { authViewModel } from '../viewmodels/authViewModel';
 import { authService } from '../services/apiService';
 import MessageDialog from '../components/MessageDialog';
 import { ScreenName } from '../components/BottomNavBar';
+import api from '../api/api';
+import { format } from 'date-fns';
+import { budgetService } from '../services/budgetService';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48) / 2;
+
+// Helper to format currency
+const formatCurrency = (amount: number) => {
+  return amount?.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }) || '₱0.00';
+};
 
 const HomeScreen = observer(() => {
   const navigation = useNavigation();
   const [activeScreen, setActiveScreen] = useState<ScreenName>('Home');
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  
+  // Data states
+  const [totalBalance, setTotalBalance] = useState(0);
+  const [monthlyIncome, setMonthlyIncome] = useState(0);
+  const [monthlyExpenses, setMonthlyExpenses] = useState(0);
+  const [remainingBudget, setRemainingBudget] = useState(0);
+  const [savingsGoal, setSavingsGoal] = useState(1000);
+  const [currentSavings, setCurrentSavings] = useState(0);
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [budgets, setBudgets] = useState<any[]>([]);
   
   // Dialog state
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -40,17 +65,10 @@ const HomeScreen = observer(() => {
     onAction: () => {},
   });
 
-  // Budget categories for progress visualization
-  const budgetCategories = [
-    { name: 'Food & Dining', spent: 320, budget: 500, icon: 'restaurant-outline', color: '#4CAF50' },
-    { name: 'Transport', spent: 150, budget: 200, icon: 'car-outline', color: '#2196F3' },
-    { name: 'Utilities', spent: 180, budget: 150, icon: 'flash-outline', color: '#FF9800' },
-    { name: 'Entertainment', spent: 90, budget: 200, icon: 'film-outline', color: '#9C27B0' },
-  ];
-
-  // Check authentication on load
+  // Check authentication and load data on mount
   useEffect(() => {
     checkAuthentication();
+    fetchAllData();
   }, []);
 
   const checkAuthentication = async () => {
@@ -74,12 +92,136 @@ const HomeScreen = observer(() => {
     }
   };
 
+  const fetchAllData = async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        fetchTransactionSummary(),
+        fetchRecentTransactions(),
+        fetchBudgets()
+      ]);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      showDialog({
+        type: 'error',
+        title: 'Data Error',
+        message: 'Failed to fetch your financial data. Please try again.',
+        actionText: 'Retry',
+        onAction: fetchAllData
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchTransactionSummary = async () => {
+    try {
+      // Get the first and last day of current month
+      const now = new Date();
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      
+      // Format dates for API
+      const startDate = firstDay.toISOString().split('T')[0];
+      const endDate = lastDay.toISOString().split('T')[0];
+      
+      console.log('Fetching transactions from', startDate, 'to', endDate);
+      
+      // Fetch transactions
+      const response = await api.get('/transactions', {
+        params: { 
+          startDate,
+          endDate
+        }
+      });
+      
+      // Get all transactions for the period
+      const allTransactions = response.data.data.transactions || [];
+      
+      console.log('Fetched transactions:', allTransactions.length);
+      
+      // Separate transactions by type
+      const incomeTransactions = allTransactions.filter(
+        (transaction: any) => transaction.type === 'income'
+      );
+      
+      const expenseTransactions = allTransactions.filter(
+        (transaction: any) => transaction.type === 'expense'
+      );
+      
+      console.log('Income transactions:', incomeTransactions.length);
+      console.log('Expense transactions:', expenseTransactions.length);
+      
+      // Calculate totals
+      const income = incomeTransactions.reduce(
+        (sum: number, t: any) => sum + t.amount, 0
+      );
+      
+      const expenses = expenseTransactions.reduce(
+        (sum: number, t: any) => sum + t.amount, 0
+      );
+      
+      console.log('Total income:', income);
+      console.log('Total expenses:', expenses);
+      
+      // Update state
+      setMonthlyIncome(income);
+      setMonthlyExpenses(expenses);
+      setTotalBalance(income - expenses);
+      
+      // For savings, it's Total Income - Total Expenses
+      setCurrentSavings(income - expenses);
+    } catch (error) {
+      console.error('Error fetching transaction summary:', error);
+      throw error;
+    }
+  };
+
+  const fetchRecentTransactions = async () => {
+    try {
+      const response = await api.get('/transactions', {
+        params: { limit: 3, sort: '-date' }
+      });
+      
+      setRecentTransactions(response.data.data.transactions);
+    } catch (error) {
+      console.error('Error fetching recent transactions:', error);
+      throw error;
+    }
+  };
+
+  const fetchBudgets = async () => {
+    try {
+      const budgetsWithSpending = await budgetService.getBudgets();
+      setBudgets(budgetsWithSpending);
+      
+      // Calculate total budget allocations
+      const totalBudgetAmount = budgetsWithSpending.reduce(
+        (sum, budget) => sum + budget.amount, 0
+      );
+      
+      // Calculate total expenses linked to budgets
+      const budgetExpenses = budgetsWithSpending.reduce(
+        (sum, budget) => sum + (budget.currentSpending || 0), 0
+      );
+      
+      // Remaining budget is: Total budget allocations - expenses linked to budgets
+      setRemainingBudget(totalBudgetAmount - budgetExpenses);
+    } catch (error) {
+      console.error('Error fetching budgets:', error);
+      throw error;
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
-    // Fetch latest data here
-    setTimeout(() => {
+    try {
+      await fetchAllData();
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
       setRefreshing(false);
-    }, 1500);
+    }
   };
 
   const handleNavigation = (screen: ScreenName) => {
@@ -98,15 +240,14 @@ const HomeScreen = observer(() => {
     navigation.navigate('Login');
   };
 
-  const handleAddExpense = () => {
-    // Navigate to add expense screen or show modal
-    console.log('Add expense pressed');
+  const handleAddTransaction = () => {
+    // @ts-ignore - ignoring type mismatch for navigation params
+    navigation.navigate('Transactions', { showAddModal: true });
   };
 
   const handleCreateBudget = () => {
-    // Navigate to create budget screen
-    console.log('Create budget pressed');
-    handleNavigation('Budget');
+    // @ts-ignore - ignoring type mismatch for navigation params
+    navigation.navigate('Budget', { showAddModal: true });
   };
 
   // Helper function to show dialog
@@ -129,9 +270,79 @@ const HomeScreen = observer(() => {
 
   // Calculate percentage for progress bars
   const calculatePercentage = (spent: number, budget: number) => {
+    if (!budget || budget <= 0) return 0;
     const percentage = (spent / budget) * 100;
     return percentage > 100 ? 100 : percentage;
   };
+
+  // Get an appropriate icon for a category
+  const getCategoryIcon = (category: string): any => {
+    const iconMap: {[key: string]: any} = {
+      'Food & Dining': 'restaurant-outline',
+      'Transport': 'car-outline',
+      'Utilities': 'flash-outline',
+      'Entertainment': 'film-outline',
+      'Shopping': 'cart-outline',
+      'Healthcare': 'medical-outline',
+      'Education': 'school-outline',
+      'Other': 'ellipsis-horizontal-outline',
+      'Salary': 'cash-outline',
+      'Investment': 'trending-up-outline',
+      'Bonus': 'gift-outline',
+      'Refund': 'arrow-undo-outline'
+    };
+    
+    return iconMap[category] || 'help-circle-outline';
+  };
+
+  // Get a color for a category
+  const getCategoryColor = (category: string): string => {
+    const colorMap: {[key: string]: string} = {
+      'Food & Dining': '#4CAF50',
+      'Transport': '#2196F3',
+      'Utilities': '#FF9800',
+      'Entertainment': '#9C27B0',
+      'Shopping': '#3F51B5',
+      'Healthcare': '#E91E63',
+      'Education': '#009688',
+      'Other': '#607D8B',
+      'Salary': '#4CAF50',
+      'Investment': '#3F51B5',
+      'Bonus': '#E91E63',
+      'Refund': '#009688'
+    };
+    
+    return colorMap[category] || '#607D8B';
+  };
+
+  // Format date for display
+  const formatTransactionDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (date.toDateString() === today.toDateString()) {
+      return `Today, ${format(date, 'h:mm a')}`;
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return `Yesterday, ${format(date, 'h:mm a')}`;
+    } else {
+      return format(date, 'MMM d, h:mm a');
+    }
+  };
+
+  // Render loading state
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <AppHeader showNotifications={true} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.loadingText}>Loading your financial data...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -172,17 +383,17 @@ const HomeScreen = observer(() => {
               <Ionicons name="eye-outline" size={18} color={theme.colors.white} />
             </TouchableOpacity>
           </View>
-          <Text style={styles.balanceAmount}>$2,450.00</Text>
+          <Text style={styles.balanceAmount}>{formatCurrency(totalBalance)}</Text>
         </View>
         
         {/* Call-to-Action Buttons */}
         <View style={styles.ctaContainer}>
           <TouchableOpacity 
             style={[styles.ctaButton, styles.expenseButton]} 
-            onPress={handleAddExpense}
+            onPress={handleAddTransaction}
           >
             <Ionicons name="add-circle-outline" size={20} color="#fff" />
-            <Text style={styles.ctaButtonText}>Add Expense</Text>
+            <Text style={styles.ctaButtonText}>Add Transaction</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -204,7 +415,7 @@ const HomeScreen = observer(() => {
                 <Ionicons name="arrow-up-outline" size={18} color={theme.colors.success} />
               </View>
               <Text style={styles.cardLabel}>Income</Text>
-              <Text style={styles.cardAmount}>$3,200.00</Text>
+              <Text style={styles.cardAmount}>{formatCurrency(monthlyIncome)}</Text>
               <Text style={styles.cardPeriod}>This Month</Text>
             </View>
             
@@ -213,7 +424,7 @@ const HomeScreen = observer(() => {
                 <Ionicons name="arrow-down-outline" size={18} color={theme.colors.error} />
               </View>
               <Text style={styles.cardLabel}>Expenses</Text>
-              <Text style={styles.cardAmount}>$750.00</Text>
+              <Text style={styles.cardAmount}>{formatCurrency(monthlyExpenses)}</Text>
               <Text style={styles.cardPeriod}>This Month</Text>
             </View>
             
@@ -221,9 +432,9 @@ const HomeScreen = observer(() => {
               <View style={[styles.cardIconContainer, { backgroundColor: 'rgba(255, 193, 7, 0.1)' }]}>
                 <Ionicons name="wallet-outline" size={18} color="#FF9800" />
               </View>
-              <Text style={styles.cardLabel}>Remaining</Text>
-              <Text style={styles.cardAmount}>$850.00</Text>
-              <Text style={styles.cardPeriod}>Budget</Text>
+              <Text style={styles.cardLabel}>Budget Left</Text>
+              <Text style={styles.cardAmount}>{formatCurrency(remainingBudget)}</Text>
+              <Text style={styles.cardPeriod}>Remaining</Text>
             </View>
             
             <View style={[styles.summaryCard, styles.cardShadow]}>
@@ -231,8 +442,8 @@ const HomeScreen = observer(() => {
                 <Ionicons name="trending-up-outline" size={18} color="#9C27B0" />
               </View>
               <Text style={styles.cardLabel}>Savings</Text>
-              <Text style={styles.cardAmount}>$600.00</Text>
-              <Text style={styles.cardPeriod}>Goal: $1,000</Text>
+              <Text style={styles.cardAmount}>{formatCurrency(currentSavings)}</Text>
+              <Text style={styles.cardPeriod}>Income - Expenses</Text>
             </View>
           </View>
         </View>
@@ -247,38 +458,42 @@ const HomeScreen = observer(() => {
           </View>
           
           <View style={styles.transactionList}>
-            <TouchableOpacity style={[styles.transactionItem, styles.cardShadow]}>
-              <View style={[styles.categoryIcon, { backgroundColor: theme.colors.primary }]}>
-                <Ionicons name="cart-outline" size={16} color="#fff" />
+            {recentTransactions.length > 0 ? (
+              recentTransactions.map((transaction, index) => (
+                <TouchableOpacity 
+                  key={transaction._id || index} 
+                  style={[styles.transactionItem, styles.cardShadow]}
+                >
+                  <View style={[
+                    styles.categoryIcon, 
+                    { backgroundColor: getCategoryColor(transaction.category) }
+                  ]}>
+                    <Ionicons 
+                      name={getCategoryIcon(transaction.category)} 
+                      size={16} 
+                      color="#fff" 
+                    />
+                  </View>
+                  <View style={styles.transactionDetails}>
+                    <Text style={styles.transactionTitle}>{transaction.description || transaction.category}</Text>
+                    <Text style={styles.transactionDate}>
+                      {formatTransactionDate(transaction.date)}
+                    </Text>
+                  </View>
+                  <Text style={[
+                    styles.transactionAmount, 
+                    transaction.type === 'income' ? styles.incomeAmount : {}
+                  ]}>
+                    {transaction.type === 'income' ? '+' : '-'}
+                    {formatCurrency(transaction.amount)}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.emptyStateContainer}>
+                <Text style={styles.emptyStateText}>No recent transactions</Text>
               </View>
-              <View style={styles.transactionDetails}>
-                <Text style={styles.transactionTitle}>Grocery Shopping</Text>
-                <Text style={styles.transactionDate}>Today, 2:30 PM</Text>
-              </View>
-              <Text style={styles.transactionAmount}>-$45.99</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={[styles.transactionItem, styles.cardShadow]}>
-              <View style={[styles.categoryIcon, { backgroundColor: theme.colors.secondary }]}>
-                <Ionicons name="fast-food-outline" size={16} color="#fff" />
-              </View>
-              <View style={styles.transactionDetails}>
-                <Text style={styles.transactionTitle}>Restaurant</Text>
-                <Text style={styles.transactionDate}>Yesterday, 7:15 PM</Text>
-              </View>
-              <Text style={styles.transactionAmount}>-$32.50</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={[styles.transactionItem, styles.cardShadow]}>
-              <View style={[styles.categoryIcon, { backgroundColor: theme.colors.success }]}>
-                <Ionicons name="cash-outline" size={16} color="#fff" />
-              </View>
-              <View style={styles.transactionDetails}>
-                <Text style={styles.transactionTitle}>Salary Deposit</Text>
-                <Text style={styles.transactionDate}>Aug 30, 9:00 AM</Text>
-              </View>
-              <Text style={[styles.transactionAmount, styles.incomeAmount]}>+$1,200.00</Text>
-            </TouchableOpacity>
+            )}
           </View>
         </View>
         
@@ -292,48 +507,66 @@ const HomeScreen = observer(() => {
           </View>
           
           <View style={styles.budgetList}>
-            {budgetCategories.map((category, index) => {
-              const percentage = calculatePercentage(category.spent, category.budget);
-              const isOverBudget = category.spent > category.budget;
-              
-              return (
-                <View key={index} style={[styles.budgetItem, styles.cardShadow]}>
-                  <View style={styles.budgetHeader}>
-                    <View style={[styles.categoryIcon, { backgroundColor: category.color }]}>
-                      <Ionicons name={category.icon as any} size={16} color="#fff" />
-                    </View>
-                    <View style={styles.budgetInfoContainer}>
-                      <Text style={styles.budgetCategory}>{category.name}</Text>
-                      <Text style={styles.budgetNumbers}>
-                        <Text style={isOverBudget ? styles.overBudget : undefined}>
-                          ${category.spent}
+            {budgets.length > 0 ? (
+              budgets.slice(0, 4).map((budget, index) => {
+                const spent = budget.currentSpending || 0;
+                const percentage = calculatePercentage(spent, budget.amount);
+                const isOverBudget = spent > budget.amount;
+                const color = getCategoryColor(budget.category);
+                
+                return (
+                  <View key={budget._id || index} style={[styles.budgetItem, styles.cardShadow]}>
+                    <View style={styles.budgetHeader}>
+                      <View style={[styles.categoryIcon, { backgroundColor: color }]}>
+                        <Ionicons 
+                          name={getCategoryIcon(budget.category)} 
+                          size={16} 
+                          color="#fff" 
+                        />
+                      </View>
+                      <View style={styles.budgetInfoContainer}>
+                        <Text style={styles.budgetCategory}>{budget.category}</Text>
+                        <Text style={styles.budgetNumbers}>
+                          <Text style={isOverBudget ? styles.overBudget : undefined}>
+                            {formatCurrency(spent)}
+                          </Text>
+                          <Text style={styles.budgetSeparator}> / </Text>
+                          <Text>{formatCurrency(budget.amount)}</Text>
                         </Text>
-                        <Text style={styles.budgetSeparator}> / </Text>
-                        <Text>${category.budget}</Text>
+                      </View>
+                      <Text style={[
+                        styles.budgetPercentage, 
+                        isOverBudget ? styles.overBudget : styles.underBudget
+                      ]}>
+                        {percentage.toFixed(0)}%
                       </Text>
                     </View>
-                    <Text style={[
-                      styles.budgetPercentage, 
-                      isOverBudget ? styles.overBudget : styles.underBudget
-                    ]}>
-                      {percentage.toFixed(0)}%
-                    </Text>
+                    
+                    <View style={styles.progressBarContainer}>
+                      <View 
+                        style={[
+                          styles.progressBar, 
+                          { 
+                            width: `${percentage}%`,
+                            backgroundColor: isOverBudget ? theme.colors.error : color
+                          }
+                        ]} 
+                      />
+                    </View>
                   </View>
-                  
-                  <View style={styles.progressBarContainer}>
-                    <View 
-                      style={[
-                        styles.progressBar, 
-                        { 
-                          width: `${percentage}%`,
-                          backgroundColor: isOverBudget ? theme.colors.error : category.color
-                        }
-                      ]} 
-                    />
-                  </View>
-                </View>
-              );
-            })}
+                );
+              })
+            ) : (
+              <View style={styles.emptyStateContainer}>
+                <Text style={styles.emptyStateText}>No budgets found</Text>
+                <TouchableOpacity 
+                  style={styles.emptyStateButton} 
+                  onPress={handleCreateBudget}
+                >
+                  <Text style={styles.emptyStateButtonText}>Create a Budget</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -358,6 +591,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    color: theme.colors.textLight,
+    fontSize: 16,
   },
   scrollView: {
     flex: 1,
@@ -611,6 +854,40 @@ const styles = StyleSheet.create({
   progressBar: {
     height: '100%',
     borderRadius: 3,
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: theme.colors.white,
+    borderRadius: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: theme.colors.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: theme.colors.textLight,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  emptyStateButton: {
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  emptyStateButtonText: {
+    color: theme.colors.white,
+    fontWeight: '600',
   },
 });
 

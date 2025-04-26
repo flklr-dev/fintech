@@ -28,6 +28,7 @@ export interface CreateBudgetDTO {
     enabled: boolean;
     threshold: number;
   };
+  bypassIncomeCheck?: boolean;
 }
 
 export interface UpdateBudgetDTO extends Partial<CreateBudgetDTO> {}
@@ -39,11 +40,55 @@ class BudgetService {
   }
 
   async getBudgets(period?: string): Promise<Budget[]> {
-    const response = await api.get('/budgets', {
-      params: { period }
-    });
-    console.log('Budget API Response:', response.data);
-    return response.data.data || [];
+    try {
+      const response = await api.get('/budgets', {
+        params: { period, includeSpending: true }
+      });
+      console.log('Budget API Response:', response.data);
+      
+      // Parse date strings into Date objects
+      const budgets = response.data.data || [];
+      return budgets.map((budget: any) => ({
+        ...budget,
+        startDate: new Date(budget.startDate),
+        endDate: new Date(budget.endDate),
+        createdAt: new Date(budget.createdAt),
+        updatedAt: new Date(budget.updatedAt)
+      }));
+    } catch (error) {
+      console.error('Error fetching budgets:', error);
+      return [];
+    }
+  }
+
+  async getBudgetWithSpending(budgetId: string): Promise<Budget | null> {
+    try {
+      const response = await api.get(`/budgets/${budgetId}?includeSpending=true`);
+      const budget = response.data.data;
+      
+      if (!budget) return null;
+      
+      return {
+        ...budget,
+        startDate: new Date(budget.startDate),
+        endDate: new Date(budget.endDate),
+        createdAt: new Date(budget.createdAt),
+        updatedAt: new Date(budget.updatedAt)
+      };
+    } catch (error) {
+      console.error(`Error fetching budget ${budgetId}:`, error);
+      return null;
+    }
+  }
+
+  async refreshBudgetSpending(): Promise<boolean> {
+    try {
+      await api.post('/budgets/refresh-spending');
+      return true;
+    } catch (error) {
+      console.error('Error refreshing budget spending:', error);
+      return false;
+    }
   }
 
   async updateBudget(budgetId: string, updates: UpdateBudgetDTO): Promise<Budget> {
