@@ -64,8 +64,13 @@ const INCOME_CATEGORIES = [
   'Salary',
   'Freelance',
   'Investments',
+  'Allowance',
   'Gift',
   'Refund',
+  'Bonus',
+  'Interest',
+  'Rental Income',
+  'Side Hustle',
   'Other'
 ];
 
@@ -94,6 +99,11 @@ const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   'Investments': 'trending-up-outline',
   'Gift': 'gift-outline',
   'Refund': 'return-down-back-outline',
+  'Allowance': 'wallet-outline',
+  'Bonus': 'gift-outline',
+  'Interest': 'analytics-outline',
+  'Rental Income': 'home-outline',
+  'Side Hustle': 'briefcase-outline',
   'Other': 'wallet-outline'
 };
 
@@ -112,6 +122,11 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Investments': '#673AB7',   // Deep Purple
   'Gift': '#E91E63',          // Pink
   'Refund': '#FF9800',        // Orange
+  'Allowance': '#8BC34A',     // Light Green
+  'Bonus': '#FFC107',         // Amber
+  'Interest': '#7E57C2',      // Deep Purple
+  'Rental Income': '#FF5722', // Deep Orange
+  'Side Hustle': '#00BCD4',   // Cyan
   'Other': '#607D8B'          // Blue Grey
 };
 

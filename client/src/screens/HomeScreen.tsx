@@ -304,10 +304,15 @@ const HomeScreen = observer(() => {
       'Education': 'school-outline',
       'Other': 'ellipsis-horizontal-outline',
       'Salary': 'cash-outline',
-      'Investment': 'trending-up-outline',
+      'Investments': 'trending-up-outline',
       'Bonus': 'gift-outline',
       'Refund': 'arrow-undo-outline',
-      'Freelance': 'laptop-outline'
+      'Freelance': 'laptop-outline',
+      'Allowance': 'wallet-outline',
+      'Gift': 'gift-outline',
+      'Interest': 'analytics-outline',
+      'Rental Income': 'home-outline',
+      'Side Hustle': 'briefcase-outline'
     };
     
     return iconMap[category] || 'help-circle-outline';
@@ -325,10 +330,15 @@ const HomeScreen = observer(() => {
       'Education': '#009688',
       'Other': '#607D8B',
       'Salary': '#4CAF50',
-      'Investment': '#3F51B5',
+      'Investments': '#3F51B5',
       'Bonus': '#E91E63',
       'Refund': '#009688',
-      'Freelance': '#00BCD4'
+      'Freelance': '#00BCD4',
+      'Allowance': '#8BC34A',
+      'Gift': '#FF4081',
+      'Interest': '#7E57C2',
+      'Rental Income': '#FF5722',
+      'Side Hustle': '#00BCD4'
     };
     
     return colorMap[category] || '#607D8B';
