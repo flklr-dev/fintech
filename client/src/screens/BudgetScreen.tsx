@@ -250,6 +250,8 @@ const BudgetScreen = observer(() => {
       navigation.navigate('Home' as any);
     } else if (screen === 'Transactions') {
       navigation.navigate('Transactions' as any);
+    } else if (screen === 'Goals') {
+      navigation.navigate('Goals' as any);
     } else if (screen === 'Reports') {
       navigation.navigate('Reports' as any);
     }

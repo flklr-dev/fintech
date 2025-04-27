@@ -9,6 +9,7 @@ import RegisterScreen from '../screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
 import BudgetScreen from '../screens/BudgetScreen';
 import TransactionsScreen from '../screens/TransactionsScreen';
+import GoalsScreen from '../screens/GoalsScreen';
 import ReportsScreen from '../screens/ReportsScreen';
 import { authViewModel } from '../viewmodels/authViewModel';
 
@@ -24,6 +25,7 @@ export type RootStackParamList = {
   Transactions: {
     showAddModal?: boolean;
   };
+  Goals: undefined;
   Reports: undefined;
 };
 
@@ -50,6 +52,7 @@ const AppNavigator = observer(() => {
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Budget" component={BudgetScreen} />
         <Stack.Screen name="Transactions" component={TransactionsScreen} />
+        <Stack.Screen name="Goals" component={GoalsScreen} />
         <Stack.Screen name="Reports" component={ReportsScreen} />
       </Stack.Navigator>
     </NavigationContainer>

@@ -29,6 +29,7 @@ type RootStackParamList = {
   Home: undefined;
   Budgets: undefined;
   Transactions: undefined;
+  Goals: undefined;
   Reports: undefined;
 };
 

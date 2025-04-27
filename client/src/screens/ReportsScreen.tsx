@@ -336,6 +336,8 @@ const ReportsScreen = observer(() => {
       navigation.navigate('Budget' as any);
     } else if (screen === 'Transactions') {
       navigation.navigate('Transactions' as any);
+    } else if (screen === 'Goals') {
+      navigation.navigate('Goals' as any);
     }
   };
 

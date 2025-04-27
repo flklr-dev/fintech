@@ -6,6 +6,7 @@ const config = require('./config/config');
 const authRoutes = require('./routes/authRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const budgetRoutes = require('./routes/budgetRoutes');
+const savingsGoalRoutes = require('./routes/savingsGoalRoutes');
 const rateLimiter = require('./middleware/rateLimit');
 
 // Initialize Express app
@@ -36,6 +37,7 @@ app.use(cors());
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
 app.use('/api/v1/budgets', budgetRoutes);
+app.use('/api/v1/goals', savingsGoalRoutes);
 
 // Handle undefined routes
 app.all('*', (req, res) => {

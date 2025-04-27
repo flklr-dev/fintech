@@ -22,11 +22,6 @@ const savingsGoalSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
-  category: {
-    type: String,
-    required: true,
-    enum: ['emergency_fund', 'retirement', 'education', 'vacation', 'home', 'car', 'wedding', 'other']
-  },
   startDate: {
     type: Date,
     required: true,

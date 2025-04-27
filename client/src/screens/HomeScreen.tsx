@@ -244,11 +244,13 @@ const HomeScreen = observer(() => {
   const handleNavigation = (screen: ScreenName) => {
     setActiveScreen(screen);
     if (screen === 'Budget') {
-      navigation.navigate('Budget');
+      navigation.navigate('Budget' as any);
     } else if (screen === 'Transactions') {
-      navigation.navigate('Transactions');
+      navigation.navigate('Transactions' as any);
+    } else if (screen === 'Goals') {
+      navigation.navigate('Goals' as any);
     } else if (screen === 'Reports') {
-      navigation.navigate('Reports');
+      navigation.navigate('Reports' as any);
     }
   };
 
@@ -502,13 +504,13 @@ const HomeScreen = observer(() => {
                       size={16} 
                       color="#fff" 
                     />
-                  </View>
-                  <View style={styles.transactionDetails}>
+              </View>
+              <View style={styles.transactionDetails}>
                     <Text style={styles.transactionTitle}>{transaction.description || transaction.category}</Text>
                     <Text style={styles.transactionDate}>
                       {formatTransactionDate(transaction.date)}
                     </Text>
-                  </View>
+              </View>
                   <Text style={[
                     styles.transactionAmount, 
                     transaction.type === 'income' ? styles.incomeAmount : {}
@@ -516,7 +518,7 @@ const HomeScreen = observer(() => {
                     {transaction.type === 'income' ? '+' : '-'}
                     {formatCurrency(transaction.amount)}
                   </Text>
-                </TouchableOpacity>
+            </TouchableOpacity>
               ))
             ) : (
               <View style={styles.emptyStateContainer}>
@@ -543,53 +545,53 @@ const HomeScreen = observer(() => {
                 const isOverBudget = spent > budget.amount;
                 const isCloseToLimit = percentage >= 85 && percentage <= 100;
                 const color = getCategoryColor(budget.category);
-                
-                return (
+              
+              return (
                   <View key={budget._id || index} style={[
                     styles.budgetItem, 
                     styles.cardShadow,
                     isCloseToLimit && styles.warningBudget,
                     isOverBudget && styles.overBudgetItem
                   ]}>
-                    <View style={styles.budgetHeader}>
+                  <View style={styles.budgetHeader}>
                       <View style={[styles.categoryIcon, { backgroundColor: color }]}>
                         <Ionicons 
                           name={getCategoryIcon(budget.category)} 
                           size={16} 
                           color="#fff" 
                         />
-                      </View>
-                      <View style={styles.budgetInfoContainer}>
+                    </View>
+                    <View style={styles.budgetInfoContainer}>
                         <Text style={styles.budgetCategory}>{budget.category}</Text>
-                        <Text style={styles.budgetNumbers}>
-                          <Text style={isOverBudget ? styles.overBudget : undefined}>
+                      <Text style={styles.budgetNumbers}>
+                        <Text style={isOverBudget ? styles.overBudget : undefined}>
                             {formatCurrency(spent)}
-                          </Text>
-                          <Text style={styles.budgetSeparator}> / </Text>
-                          <Text>{formatCurrency(budget.amount)}</Text>
                         </Text>
-                      </View>
-                      <Text style={[
-                        styles.budgetPercentage, 
-                        isCloseToLimit ? styles.warningText : null,
-                        isOverBudget ? styles.overBudget : styles.underBudget
-                      ]}>
-                        {percentage.toFixed(0)}%
+                        <Text style={styles.budgetSeparator}> / </Text>
+                          <Text>{formatCurrency(budget.amount)}</Text>
                       </Text>
                     </View>
-                    
-                    <View style={styles.progressBarContainer}>
-                      <View 
-                        style={[
-                          styles.progressBar,
+                    <Text style={[
+                      styles.budgetPercentage, 
+                        isCloseToLimit ? styles.warningText : null,
+                      isOverBudget ? styles.overBudget : styles.underBudget
+                    ]}>
+                      {percentage.toFixed(0)}%
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.progressBarContainer}>
+                    <View 
+                      style={[
+                        styles.progressBar, 
                           isOverBudget ? styles.overBudgetBar : { backgroundColor: color },
                           isCloseToLimit && !isOverBudget ? styles.warningBar : null,
                           { width: `${Math.min(percentage, 100)}%` }
-                        ]} 
-                      />
-                    </View>
+                      ]} 
+                    />
                   </View>
-                );
+                </View>
+              );
               })
             ) : (
               <View style={styles.emptyStateContainer}>

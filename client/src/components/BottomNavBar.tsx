@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
 
-export type ScreenName = 'Home' | 'Budget' | 'Transactions' | 'Reports';
+export type ScreenName = 'Home' | 'Budget' | 'Transactions' | 'Goals' | 'Reports';
 
 interface BottomNavBarProps {
   activeScreen: ScreenName;
@@ -15,6 +15,7 @@ const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeScreen, onPress }) =>
     { name: 'Home', icon: 'home-outline' },
     { name: 'Budget', icon: 'wallet-outline' },
     { name: 'Transactions', icon: 'swap-horizontal-outline' },
+    { name: 'Goals', icon: 'trophy-outline' },
     { name: 'Reports', icon: 'bar-chart-outline' },
   ] as const;
 
