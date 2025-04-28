@@ -2,6 +2,10 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
+import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/AppNavigator';
 
 interface AppHeaderProps {
   showBackButton?: boolean;
@@ -10,7 +14,11 @@ interface AppHeaderProps {
   onRightIconPress?: () => void;
   showNotifications?: boolean;
   onNotificationsPress?: () => void;
+  showProfile?: boolean;
+  onProfilePress?: () => void;
 }
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const AppHeader: React.FC<AppHeaderProps> = ({
   showBackButton = false,
@@ -19,7 +27,20 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   onRightIconPress,
   showNotifications = true,
   onNotificationsPress,
+  showProfile = true,
+  onProfilePress,
 }) => {
+  const { user } = useAuth();
+  const navigation = useNavigation<NavigationProp>();
+
+  const handleProfilePress = () => {
+    if (onProfilePress) {
+      onProfilePress();
+    } else {
+      navigation.navigate('Account');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar
@@ -55,6 +76,20 @@ const AppHeader: React.FC<AppHeaderProps> = ({
           {rightIcon && (
             <TouchableOpacity style={styles.iconButton} onPress={onRightIconPress}>
               <Ionicons name={rightIcon} size={22} color={theme.colors.white} />
+            </TouchableOpacity>
+          )}
+
+          {showProfile && (
+            <TouchableOpacity style={styles.profileButton} onPress={handleProfilePress}>
+              <View style={styles.profileAvatar}>
+                {user?.name ? (
+                  <Text style={styles.profileInitials}>
+                    {user.name.charAt(0).toUpperCase()}
+                  </Text>
+                ) : (
+                  <Ionicons name="person" size={18} color={theme.colors.white} />
+                )}
+              </View>
             </TouchableOpacity>
           )}
         </View>
@@ -125,6 +160,25 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.error,
     borderWidth: 1.5,
     borderColor: '#3770FF',
+  },
+  profileButton: {
+    marginLeft: 6,
+    padding: 2,
+  },
+  profileAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  profileInitials: {
+    color: theme.colors.white,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

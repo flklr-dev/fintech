@@ -1,15 +1,20 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authService, LoginRequest, RegisterRequest } from '../services/apiService';
+import { authService, LoginRequest, RegisterRequest, apiService } from '../services/apiService';
+
+// Define user type
+type User = {
+  id: string;
+  name: string;
+  email: string;
+};
 
 // Define types
 type AuthContextType = {
   isLoggedIn: boolean;
   isLoading: boolean;
   error: string | null;
-  userId: string | null;
-  userName: string | null;
-  email: string | null;
+  user: User | null;
   
   // Form validation states
   emailError: string | null;
@@ -37,9 +42,7 @@ const AuthContext = createContext<AuthContextType>({
   isLoggedIn: false,
   isLoading: false,
   error: null,
-  userId: null,
-  userName: null,
-  email: null,
+  user: null,
   
   emailError: null,
   passwordError: null,
@@ -70,9 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [error, setError] = useState<string | null>(null);
   
   // User data
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   
   // Form validation states
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -88,10 +89,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const checkAuthState = async () => {
       try {
         const token = await authService.getToken();
-        setIsLoggedIn(!!token);
+        if (token) {
+          setIsLoggedIn(true);
+          // Fetch user profile
+          const userProfile = await apiService.getCurrentUser();
+          setUser(userProfile);
+        } else {
+          setIsLoggedIn(false);
+          setUser(null);
+        }
       } catch (error) {
         console.error('Failed to check auth state:', error);
         setIsLoggedIn(false);
+        setUser(null);
       }
     };
     
@@ -183,12 +193,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Attempt login
       const token = await authService.login(data);
       
-      // Extract user data from token or fetch user profile
-      // For demonstration, setting dummy values
+      // Fetch user profile
+      const userProfile = await apiService.getCurrentUser();
+      
       setIsLoggedIn(true);
-      setUserId('user-id'); // Replace with actual user ID extraction logic
-      setUserName('User'); // Replace with actual user name extraction logic
-      setEmail(data.email);
+      setUser(userProfile);
       
       return true;
     } catch (error: any) {
@@ -247,12 +256,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const authToken = await authService.loginWithGoogle(token);
       
-      // Extract user data from token or fetch user profile
-      // For demonstration, setting dummy values
+      // Fetch user profile
+      const userProfile = await apiService.getCurrentUser();
+      
       setIsLoggedIn(true);
-      setUserId('google-user-id'); // Replace with actual user ID extraction logic
-      setUserName('Google User'); // Replace with actual user name extraction logic
-      setEmail('google@example.com'); // Replace with actual email extraction logic
+      setUser(userProfile);
       
       return true;
     } catch (error: any) {
@@ -270,9 +278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await authService.clearToken();
       
       setIsLoggedIn(false);
-      setUserId(null);
-      setUserName(null);
-      setEmail(null);
+      setUser(null);
       
       return true;
     } catch (error) {
@@ -287,9 +293,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isLoggedIn,
     isLoading,
     error,
-    userId,
-    userName,
-    email,
+    user,
     
     emailError,
     passwordError,

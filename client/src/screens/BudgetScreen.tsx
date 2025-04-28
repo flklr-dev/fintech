@@ -1011,14 +1011,18 @@ const BudgetScreen = observer(() => {
     }
   }, [navigation]);
 
+  // Handle navigation to account screen
+  const handleProfilePress = () => {
+    navigation.navigate('Account');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <AppHeader 
-        showBackButton={false}
-        showNotifications={true}
-        onNotificationsPress={() => {
-          // Handle notifications
-        }}
+        rightIcon="add-outline" 
+        onRightIconPress={() => setShowAddModal(true)}
+        showProfile={true}
+        onProfilePress={handleProfilePress}
       />
       
       <View style={styles.headerContainer}>
@@ -1103,7 +1107,7 @@ const BudgetScreen = observer(() => {
                   <TouchableOpacity
           style={styles.fab}
           onPress={() => setShowAddModal(true)}
-        >
+                  >
           <Ionicons name="add" size={24} color="#fff" />
                   </TouchableOpacity>
       )}

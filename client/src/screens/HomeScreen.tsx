@@ -180,7 +180,7 @@ const HomeScreen = observer(() => {
   const fetchRecentTransactions = async () => {
     try {
       const response = await api.get('/transactions', {
-        params: { limit: 3, sort: '-date' }
+        params: { limit: 5, sort: '-date' }
       });
       
       setRecentTransactions(response.data.data.transactions);
@@ -267,6 +267,10 @@ const HomeScreen = observer(() => {
   const handleCreateBudget = () => {
     // Navigate to the Budget screen
     navigation.navigate('Budget' as any); // Using 'as any' to fix type issues
+  };
+
+  const handleProfilePress = () => {
+    navigation.navigate('Account');
   };
 
   // Helper function to show dialog
@@ -379,9 +383,9 @@ const HomeScreen = observer(() => {
     <SafeAreaView style={styles.container}>
       <AppHeader 
         showNotifications={true}
-        onNotificationsPress={() => {
-          // Handle notifications
-        }}
+        onNotificationsPress={() => console.log('Notifications pressed')} 
+        showProfile={true}
+        onProfilePress={handleProfilePress}
       />
       
       <ScrollView 
@@ -490,7 +494,7 @@ const HomeScreen = observer(() => {
           
           <View style={styles.transactionList}>
             {recentTransactions.length > 0 ? (
-              recentTransactions.map((transaction, index) => (
+              recentTransactions.slice(0, 3).map((transaction, index) => (
                 <TouchableOpacity 
                   key={transaction._id || index} 
                   style={[styles.transactionItem, styles.cardShadow]}

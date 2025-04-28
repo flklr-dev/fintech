@@ -135,7 +135,7 @@ const MessageDialog: React.FC<MessageDialogProps> = ({
                       style={[styles.button, styles.dismissButton]}
                       onPress={onDismiss}
                     >
-                      <Text style={styles.dismissButtonText}>Dismiss</Text>
+                      <Text style={styles.dismissButtonText}>Cancel</Text>
                     </TouchableOpacity>
                     
                     <TouchableOpacity

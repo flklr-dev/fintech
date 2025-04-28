@@ -373,6 +373,11 @@ const ReportsScreen = observer(() => {
     return calculatedHasData;
   };
 
+  // Handle navigation to account screen
+  const handleProfilePress = () => {
+    navigation.navigate('Account');
+  };
+
   // Render loading state
   if (loading) {
     return (
@@ -425,11 +430,8 @@ const ReportsScreen = observer(() => {
   return (
     <SafeAreaView style={styles.container}>
       <AppHeader 
-        showBackButton={false}
-        showNotifications={true}
-        onNotificationsPress={() => {
-          // Handle notifications
-        }}
+        showProfile={true}
+        onProfilePress={handleProfilePress}
       />
       
       <View style={styles.headerContainer}>

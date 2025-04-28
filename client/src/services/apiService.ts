@@ -18,7 +18,14 @@ export interface UserProfile {
   id: string;
   name: string;
   email: string;
+  role?: string;
+  createdAt?: string;
   // Add other user profile fields as needed
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
 }
 
 // Constants
@@ -160,8 +167,8 @@ export const apiService = {
   // User profile methods
   getUserProfile: async (): Promise<UserProfile> => {
     try {
-      const response: AxiosResponse = await axiosInstance.get('/user/profile');
-      return response.data;
+      const response: AxiosResponse = await axiosInstance.get('/users/profile');
+      return response.data.data.user;
     } catch (error) {
       const axiosError = error as AxiosError<{message?: string}>;
       throw new Error(
@@ -170,15 +177,37 @@ export const apiService = {
     }
   },
 
-  updateUserProfile: async (profileData: Partial<UserProfile>): Promise<UserProfile> => {
+  updateUserProfile: async (name: string): Promise<UserProfile> => {
     try {
-      const response: AxiosResponse = await axiosInstance.put('/user/profile', profileData);
-      return response.data;
+      const response: AxiosResponse = await axiosInstance.patch('/users/profile', { name });
+      return response.data.data.user;
     } catch (error) {
       const axiosError = error as AxiosError<{message?: string}>;
       throw new Error(
         axiosError.response?.data?.message || 'Failed to update profile. Please try again.'
       );
+    }
+  },
+
+  changePassword: async (passwords: ChangePasswordRequest): Promise<void> => {
+    try {
+      await axiosInstance.patch('/users/change-password', passwords);
+    } catch (error) {
+      const axiosError = error as AxiosError<{message?: string}>;
+      throw new Error(
+        axiosError.response?.data?.message || 'Failed to change password. Please try again.'
+      );
+    }
+  },
+
+  // Get current user profile - Use the new user profile endpoint instead of auth/me
+  getCurrentUser: async (): Promise<UserProfile> => {
+    try {
+      const response = await axiosInstance.get('/users/profile');
+      return response.data.data.user;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      throw error;
     }
   }
 };

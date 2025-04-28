@@ -116,6 +116,35 @@ exports.protect = async (req, res, next) => {
   }
 };
 
+// Get current user profile
+exports.getCurrentUser = async (req, res) => {
+  try {
+    // User data is already attached to req by the protect middleware
+    const user = req.user;
+    
+    // Remove sensitive fields
+    user.password = undefined;
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          createdAt: user.createdAt
+        }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+};
+
 // Restrict to certain roles
 exports.restrictTo = (...roles) => {
   return (req, res, next) => {

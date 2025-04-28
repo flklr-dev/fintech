@@ -11,6 +11,7 @@ import BudgetScreen from '../screens/BudgetScreen';
 import TransactionsScreen from '../screens/TransactionsScreen';
 import GoalsScreen from '../screens/GoalsScreen';
 import ReportsScreen from '../screens/ReportsScreen';
+import AccountScreen from '../screens/AccountScreen';
 import { authViewModel } from '../viewmodels/authViewModel';
 
 // Define navigation types
@@ -27,6 +28,7 @@ export type RootStackParamList = {
   };
   Goals: undefined;
   Reports: undefined;
+  Account: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -54,6 +56,7 @@ const AppNavigator = observer(() => {
         <Stack.Screen name="Transactions" component={TransactionsScreen} />
         <Stack.Screen name="Goals" component={GoalsScreen} />
         <Stack.Screen name="Reports" component={ReportsScreen} />
+        <Stack.Screen name="Account" component={AccountScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

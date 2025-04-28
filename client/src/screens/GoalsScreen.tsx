@@ -587,12 +587,17 @@ const GoalsScreen = observer(() => {
     </View>
   );
 
+  // Handle navigation to account screen
+  const handleProfilePress = () => {
+    navigation.navigate('Account');
+  };
+
   // Main component render
   return (
     <SafeAreaView style={styles.container}>
       <AppHeader 
-        showBackButton={false}
-        showNotifications={true}
+        showProfile={true}
+        onProfilePress={handleProfilePress}
       />
       
       <View style={styles.headerContainer}>

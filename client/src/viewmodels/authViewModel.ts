@@ -1,11 +1,5 @@
 import { makeAutoObservable, runInAction } from 'mobx';
-import { authService, LoginRequest, RegisterRequest } from '../services/apiService';
-import * as Google from 'expo-auth-session/providers/google';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// For Google Auth - replace with your actual values
-const GOOGLE_CLIENT_ID = 'your-client-id.apps.googleusercontent.com';
-const GOOGLE_EXPO_CLIENT_ID = 'your-expo-client-id.apps.googleusercontent.com';
+import { authService, LoginRequest, RegisterRequest, apiService } from '../services/apiService';
 
 class AuthViewModel {
   // Auth state
@@ -38,17 +32,24 @@ class AuthViewModel {
       const token = await authService.getToken();
       
       if (token) {
-        // If a token exists, validate it 
-        // (In a real app you might want to decode the JWT to check expiration)
+        // If a token exists, validate it and fetch user profile
+        try {
+          const userData = await apiService.getCurrentUser();
+          runInAction(() => {
+            this.isLoggedIn = true;
+            this.userId = userData.id;
+            this.userName = userData.name;
+            this.email = userData.email;
+          });
+        } catch (error) {
+          console.error('Failed to fetch user profile:', error);
         runInAction(() => {
           this.isLoggedIn = true;
-          // In a production app, you would:
-          // 1. Decode the JWT to get user info 
-          // 2. Or make an API call to /me endpoint to get user profile
-          // For now, we'll set some placeholder values
+            // Set placeholder values if we couldn't fetch the profile
           this.userId = 'user-id';
           this.userName = 'User';
         });
+        }
       } else {
         runInAction(() => {
           this.isLoggedIn = false;
@@ -194,11 +195,26 @@ class AuthViewModel {
       // Store token
       await authService.setToken(token);
       
+      // Fetch user profile
+      try {
+        const userData = await apiService.getCurrentUser();
+        runInAction(() => {
+          this.isLoggedIn = true;
+          this.userId = userData.id;
+          this.userName = userData.name;
+          this.email = userData.email;
+        });
+      } catch (profileError) {
+        console.error('Failed to fetch user profile after login:', profileError);
+        runInAction(() => {
+          this.isLoggedIn = true;
+          this.userId = 'user-id'; // Fallback
+          this.userName = 'User'; // Fallback
+          this.email = data.email;
+        });
+      }
+      
       runInAction(() => {
-        this.isLoggedIn = true;
-        this.userId = 'user-id'; // In a real app, extract from JWT or fetch profile
-        this.userName = 'User'; // In a real app, extract from JWT or fetch profile
-        this.email = data.email;
         this.isLoading = false;
       });
       
@@ -321,6 +337,29 @@ class AuthViewModel {
         this.error = 'Logout failed. Please try again.';
       });
       return false;
+    }
+  }
+
+  // Fetch user profile
+  async fetchUserProfile() {
+    try {
+      this.isLoading = true;
+      
+      const userData = await apiService.getCurrentUser();
+      runInAction(() => {
+        this.userId = userData.id;
+        this.userName = userData.name;
+        this.email = userData.email;
+      });
+      
+      return userData;
+    } catch (error) {
+      console.error('Failed to fetch user profile:', error);
+      return null;
+    } finally {
+      runInAction(() => {
+        this.isLoading = false;
+      });
     }
   }
 }

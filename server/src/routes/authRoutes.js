@@ -10,27 +10,7 @@ router.post('/login', authController.login);
 router.get(
   '/me',
   authController.protect,
-  async (req, res) => {
-    try {
-      // User data is already attached to req by the protect middleware
-      const user = req.user;
-      
-      // Remove sensitive fields
-      user.password = undefined;
-      
-      res.status(200).json({
-        status: 'success',
-        data: {
-          user
-        }
-      });
-    } catch (error) {
-      res.status(500).json({
-        status: 'error',
-        message: error.message
-      });
-    }
-  }
+  authController.getCurrentUser
 );
 
 module.exports = router; 
