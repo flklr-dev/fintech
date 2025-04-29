@@ -30,6 +30,10 @@ export interface ChangePasswordRequest {
 
 // Constants
 const AUTH_TOKEN_KEY = 'auth_token';
+const USER_DATA_KEY = 'user_data';
+const TOKEN_EXPIRY_KEY = 'token_expiry';
+// Default token expiry time (24 hours)
+const DEFAULT_TOKEN_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 // Create axios instance
 const axiosInstance: AxiosInstance = axios.create({
@@ -42,7 +46,7 @@ const axiosInstance: AxiosInstance = axios.create({
 // Request interceptor for adding auth token
 axiosInstance.interceptors.request.use(
   async (config) => {
-    const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+    const token = await getValidToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -60,9 +64,16 @@ axiosInstance.interceptors.response.use(
     if (error.response) {
       // The request was made and the server responded with a status code
       // that falls out of the range of 2xx
-      if (error.response.status === 401) {
+      
+      // Check if this is a password-related error, which we don't want to log to console
+      const responseData = error.response.data as any;
+      const isPasswordError = 
+        responseData?.message?.includes('Current password is incorrect') ||
+        error.config?.url?.includes('change-password');
+      
+      if (error.response.status === 401 && !isPasswordError) {
         console.error('Authentication error:', error.response.data);
-      } else {
+      } else if (!isPasswordError) {
         console.error('API error:', error.response.data);
       }
     } else if (error.request) {
@@ -76,35 +87,91 @@ axiosInstance.interceptors.response.use(
   }
 );
 
+// Helper function to get a valid token (not expired)
+const getValidToken = async (): Promise<string | null> => {
+  try {
+    // First check if we have a token
+    const tokenData = await getSecurely(AUTH_TOKEN_KEY);
+    if (!tokenData?.token) return null;
+    
+    // Then check if we have expiry info
+    const expiryStr = await AsyncStorage.getItem(TOKEN_EXPIRY_KEY);
+    if (!expiryStr) return tokenData.token; // If no expiry, assume token is valid
+    
+    // Check if token is expired
+    const expiry = parseInt(expiryStr, 10);
+    const now = Date.now();
+    
+    if (now >= expiry) {
+      // Token expired, clear auth data
+      await clearAuthData();
+      return null;
+    }
+    
+    // Token is valid
+    return tokenData.token;
+  } catch (error) {
+    console.error('Error getting token:', error);
+    return null;
+  }
+};
+
+// Helper to clear all auth related data
+const clearAuthData = async (): Promise<void> => {
+  try {
+    await deleteSecurely(AUTH_TOKEN_KEY);
+    await AsyncStorage.removeItem(TOKEN_EXPIRY_KEY);
+    await AsyncStorage.removeItem(USER_DATA_KEY);
+    await AsyncStorage.removeItem('lastPasswordChange');
+  } catch (error) {
+    console.error('Error clearing auth data:', error);
+  }
+};
+
 // Auth service methods
 export const authService = {
   // Token management
-  setToken: async (token: string): Promise<void> => {
+  setToken: async (token: string, user?: UserProfile): Promise<void> => {
     try {
-      // Use secureStorage.saveSecurely instead of AsyncStorage for secure token storage
-      await saveSecurely('auth_token', { token });
+      // Save token securely
+      await saveSecurely(AUTH_TOKEN_KEY, { token });
+      
+      // Set token expiry (24 hours from now)
+      const expiryTime = Date.now() + DEFAULT_TOKEN_EXPIRY;
+      await AsyncStorage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
+      
+      // Save user data if provided
+      if (user) {
+        await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+      }
     } catch (error) {
       console.error('Error saving token:', error);
     }
   },
 
   getToken: async (): Promise<string | null> => {
-    try {
-      // Use secure storage to retrieve token
-      const data = await getSecurely('auth_token');
-      return data?.token || null;
-    } catch (error) {
-      console.error('Error getting token:', error);
-      return null;
-    }
+    return getValidToken();
   },
 
   clearToken: async (): Promise<void> => {
+    await clearAuthData();
+  },
+  
+  // Check if user is logged in with a valid token
+  isLoggedIn: async (): Promise<boolean> => {
+    const token = await getValidToken();
+    return !!token;
+  },
+  
+  // Get stored user data
+  getStoredUserData: async (): Promise<UserProfile | null> => {
     try {
-      // Use secure storage to clear token
-      await deleteSecurely('auth_token');
+      const userData = await AsyncStorage.getItem(USER_DATA_KEY);
+      if (!userData) return null;
+      return JSON.parse(userData);
     } catch (error) {
-      console.error('Error clearing token:', error);
+      console.error('Error getting stored user data:', error);
+      return null;
     }
   },
 
@@ -113,7 +180,10 @@ export const authService = {
     try {
       const response: AxiosResponse = await axiosInstance.post('/auth/login', credentials);
       const { token } = response.data;
-      await authService.setToken(token);
+      const user = response.data.data?.user;
+      
+      // Store token and user data
+      await authService.setToken(token, user);
       return token;
     } catch (error) {
       const axiosError = error as AxiosError<{message?: string}>;
@@ -128,7 +198,10 @@ export const authService = {
       // Update endpoint from /auth/register to /auth/signup to match the server
       const response: AxiosResponse = await axiosInstance.post('/auth/signup', userData);
       const { token } = response.data;
-      await authService.setToken(token);
+      const user = response.data.data?.user;
+      
+      // Store token and user data
+      await authService.setToken(token, user);
       return token;
     } catch (error) {
       const axiosError = error as AxiosError<{message?: string}>;
@@ -140,7 +213,7 @@ export const authService = {
 
   logout: async (): Promise<void> => {
     try {
-      await authService.clearToken();
+      await clearAuthData();
     } catch (error) {
       console.error('Logout error:', error);
       throw new Error('Failed to logout. Please try again.');
@@ -151,7 +224,10 @@ export const authService = {
     try {
       const response: AxiosResponse = await axiosInstance.post('/auth/google', { token: googleToken });
       const { token } = response.data;
-      await authService.setToken(token);
+      const user = response.data.data?.user;
+      
+      // Store token and user data
+      await authService.setToken(token, user);
       return token;
     } catch (error) {
       const axiosError = error as AxiosError<{message?: string}>;

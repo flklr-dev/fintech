@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -12,8 +12,6 @@ interface AppHeaderProps {
   onBackPress?: () => void;
   rightIcon?: keyof typeof Ionicons.glyphMap;
   onRightIconPress?: () => void;
-  showNotifications?: boolean;
-  onNotificationsPress?: () => void;
   showProfile?: boolean;
   onProfilePress?: () => void;
 }
@@ -25,13 +23,12 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   onBackPress,
   rightIcon,
   onRightIconPress,
-  showNotifications = true,
-  onNotificationsPress,
   showProfile = true,
   onProfilePress,
 }) => {
   const { user } = useAuth();
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute();
 
   const handleProfilePress = () => {
     if (onProfilePress) {
@@ -40,6 +37,9 @@ const AppHeader: React.FC<AppHeaderProps> = ({
       navigation.navigate('Account');
     }
   };
+
+  // Only show profile icon if not on Account screen
+  const showProfileIcon = showProfile && route.name !== 'Account';
 
   return (
     <View style={styles.container}>
@@ -63,23 +63,13 @@ const AppHeader: React.FC<AppHeaderProps> = ({
         </View>
 
         <View style={styles.rightContainer}>
-          {showNotifications && (
-            <TouchableOpacity 
-              style={[styles.iconButton, styles.notificationButton]} 
-              onPress={onNotificationsPress}
-            >
-              <Ionicons name="notifications-outline" size={20} color={theme.colors.white} />
-              <View style={styles.notificationBadge} />
-            </TouchableOpacity>
-          )}
-          
           {rightIcon && (
             <TouchableOpacity style={styles.iconButton} onPress={onRightIconPress}>
               <Ionicons name={rightIcon} size={22} color={theme.colors.white} />
             </TouchableOpacity>
           )}
 
-          {showProfile && (
+          {showProfileIcon && (
             <TouchableOpacity style={styles.profileButton} onPress={handleProfilePress}>
               <View style={styles.profileAvatar}>
                 {user?.name ? (
@@ -145,21 +135,6 @@ const styles = StyleSheet.create({
   iconButton: {
     padding: 6,
     borderRadius: 8,
-  },
-  notificationButton: {
-    marginRight: 6,
-    position: 'relative',
-  },
-  notificationBadge: {
-    position: 'absolute',
-    top: 5,
-    right: 5,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: theme.colors.error,
-    borderWidth: 1.5,
-    borderColor: '#3770FF',
   },
   profileButton: {
     marginLeft: 6,

@@ -88,13 +88,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const checkAuthState = async () => {
       try {
-        const token = await authService.getToken();
-        if (token) {
+        setIsLoading(true);
+        
+        // Check if user is logged in with a valid (non-expired) token
+        const isUserLoggedIn = await authService.isLoggedIn();
+        
+        if (isUserLoggedIn) {
+          // Try to get stored user data first for faster loading
+          const storedUserData = await authService.getStoredUserData();
+          
+          if (storedUserData) {
+            setUser(storedUserData);
+          }
+          
+          // Fetch latest user profile in the background
+          try {
+            const userProfile = await apiService.getCurrentUser();
+            setUser(userProfile);
+            
+            // Update stored user data with latest
+            await AsyncStorage.setItem('user_data', JSON.stringify(userProfile));
+          } catch (profileError) {
+            console.error('Error fetching current user profile:', profileError);
+            // If we can't fetch the profile but have a valid token,
+            // we'll still consider the user logged in with cached data
+          }
+          
           setIsLoggedIn(true);
-          // Fetch user profile
-          const userProfile = await apiService.getCurrentUser();
-          setUser(userProfile);
         } else {
+          // Clear any auth state if token is invalid or expired
+          await authService.clearToken();
           setIsLoggedIn(false);
           setUser(null);
         }
@@ -102,6 +125,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Failed to check auth state:', error);
         setIsLoggedIn(false);
         setUser(null);
+      } finally {
+        setIsLoading(false);
       }
     };
     
@@ -193,11 +218,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Attempt login
       const token = await authService.login(data);
       
-      // Fetch user profile
-      const userProfile = await apiService.getCurrentUser();
+      // Get stored user data (should have been saved during login)
+      const storedUserData = await authService.getStoredUserData();
+      
+      if (storedUserData) {
+        setUser(storedUserData);
+      } else {
+        // Fetch user profile if not available in stored data
+        const userProfile = await apiService.getCurrentUser();
+        setUser(userProfile);
+        
+        // Store user data for future use
+        await AsyncStorage.setItem('user_data', JSON.stringify(userProfile));
+      }
       
       setIsLoggedIn(true);
-      setUser(userProfile);
       
       return true;
     } catch (error: any) {
@@ -234,6 +269,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Attempt registration
       await authService.register(data);
       
+      // Get stored user data (should have been saved during registration)
+      const storedUserData = await authService.getStoredUserData();
+      
+      if (storedUserData) {
+        setUser(storedUserData);
+        setIsLoggedIn(true);
+      } else {
+        // Fetch user profile if not available in stored data
+        try {
+          const userProfile = await apiService.getCurrentUser();
+          setUser(userProfile);
+          setIsLoggedIn(true);
+          
+          // Store user data for future use
+          await AsyncStorage.setItem('user_data', JSON.stringify(userProfile));
+        } catch (profileError) {
+          console.error('Error fetching user profile after registration:', profileError);
+          throw new Error('Registration successful but failed to get user profile');
+        }
+      }
+      
       return true;
     } catch (error: any) {
       // Handle specific API errors
@@ -256,11 +312,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const authToken = await authService.loginWithGoogle(token);
       
-      // Fetch user profile
-      const userProfile = await apiService.getCurrentUser();
+      // Get stored user data (should have been saved during Google login)
+      const storedUserData = await authService.getStoredUserData();
+      
+      if (storedUserData) {
+        setUser(storedUserData);
+      } else {
+        // Fetch user profile if not available in stored data
+        const userProfile = await apiService.getCurrentUser();
+        setUser(userProfile);
+        
+        // Store user data for future use
+        await AsyncStorage.setItem('user_data', JSON.stringify(userProfile));
+      }
       
       setIsLoggedIn(true);
-      setUser(userProfile);
       
       return true;
     } catch (error: any) {

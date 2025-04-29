@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,8 @@ import {
   KeyboardAvoidingView,
   ActivityIndicator,
   ToastAndroid,
-  Animated
+  Animated,
+  Switch
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { observer } from 'mobx-react-lite';
@@ -29,7 +30,7 @@ import { ScreenName } from '../components/BottomNavBar';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import api from '../api/api';
-import * as transactionService from '../api/transactionService';
+import transactionService from '../services/transactionService';
 import { budgetService, Budget as BudgetType } from '../services/budgetService';
 import MessageDialog from '../components/MessageDialog';
 
@@ -157,7 +158,8 @@ const TransactionsScreen = observer(() => {
     category: '',
     date: new Date(),
     paymentMethod: '',
-    linkedBudget: ''
+    linkedBudget: '',
+    isRecurring: false,
   });
   const [lastTransactionType, setLastTransactionType] = useState<'income' | 'expense'>('expense');
   const [showSuccessFeedback, setShowSuccessFeedback] = useState(false);
@@ -265,6 +267,22 @@ const TransactionsScreen = observer(() => {
       setExpandedSections(initialExpandState);
     }
   }, [transactions]);
+
+  // Reset form function
+  const resetForm = () => {
+    setNewTransaction({
+      title: '',
+      amount: '',
+      type: 'expense',
+      category: '',
+      date: new Date(),
+      paymentMethod: '',
+      linkedBudget: '',
+      isRecurring: false,
+    });
+    setFormErrors({ amount: '', category: '', description: '' });
+    setLastTransactionType(newTransaction.type);
+  };
 
   // Fetch transactions from API
   const fetchTransactions = async () => {
@@ -635,7 +653,8 @@ const TransactionsScreen = observer(() => {
         description: title,
         date: newTransaction.date,
         paymentMethod: newTransaction.paymentMethod,
-        linkedBudget: linkedBudgetId || undefined
+        linkedBudget: linkedBudgetId || undefined,
+        isRecurring: newTransaction.isRecurring
       };
       
       // Send to API
@@ -643,7 +662,7 @@ const TransactionsScreen = observer(() => {
       
       // Format for local state update
       const newTransactionObj: Transaction = {
-        id: response.data.transaction._id || Date.now().toString(),
+        id: response._id || Date.now().toString(),
         title,
         amount,
         type: newTransaction.type,
@@ -652,7 +671,8 @@ const TransactionsScreen = observer(() => {
         color,
         date: newTransaction.date,
         paymentMethod: newTransaction.paymentMethod || '',
-        linkedBudget: linkedBudgetId
+        linkedBudget: linkedBudgetId,
+        isRecurring: newTransaction.isRecurring
       };
       
       // Update local state
@@ -687,21 +707,12 @@ const TransactionsScreen = observer(() => {
       // Show success feedback
       showTransactionAddedFeedback(newTransaction.type);
       
-      // Close modal and reset form
+      // Reset form and close modal
+      resetForm();
       setShowAddModal(false);
-      setNewTransaction({
-        title: '',
-        amount: '',
-        type: 'expense',
-        category: '',
-        date: new Date(),
-        paymentMethod: '',
-        linkedBudget: ''
-      });
-      setFormErrors({ amount: '', category: '', description: '' });
       
-      // Update last transaction type
-      setLastTransactionType(newTransaction.type);
+      // Refresh transaction list
+      fetchTransactions();
       
     } catch (error) {
       console.error('Error creating transaction:', error);
@@ -913,7 +924,8 @@ const TransactionsScreen = observer(() => {
         // Don't allow date changes - use the original date
         date: selectedTransaction.date,
         paymentMethod: editedTransaction.paymentMethod,
-        linkedBudget: linkedBudgetId || undefined
+        linkedBudget: linkedBudgetId || undefined,
+        isRecurring: selectedTransaction.isRecurring
       };
         
       // Update transaction on server
@@ -931,7 +943,7 @@ const TransactionsScreen = observer(() => {
         date: selectedTransaction.date, // Keep original date
         paymentMethod: editedTransaction.paymentMethod || '',
         linkedBudget: linkedBudgetId,
-        isRecurring: selectedTransaction.isRecurring // Preserve recurring status
+        isRecurring: selectedTransaction.isRecurring
       };
         
       // Update the transaction in the local state
@@ -1352,6 +1364,17 @@ const TransactionsScreen = observer(() => {
                     <Picker.Item key={method} label={method} value={method} />
                   ))}
                 </Picker>
+              </View>
+
+              {/* Recurring Toggle */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                <Text style={{ fontSize: 15, color: theme.colors.text, fontWeight: '500', flex: 1 }}>Recurring</Text>
+                <Switch
+                  value={newTransaction.isRecurring}
+                  onValueChange={value => setNewTransaction(prev => ({ ...prev, isRecurring: value }))}
+                  trackColor={{ false: theme.colors.lightGray, true: theme.colors.primary }}
+                  thumbColor={newTransaction.isRecurring ? theme.colors.primary : '#f4f3f4'}
+                />
               </View>
 
               {/* Add Button */}

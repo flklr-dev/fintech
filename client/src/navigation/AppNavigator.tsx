@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { observer } from 'mobx-react';
+import { Ionicons } from '@expo/vector-icons';
+import { theme } from '../theme';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Dimensions, ActivityIndicator } from 'react-native';
 
 // Import screens
 import LoginScreen from '../screens/LoginScreen';

@@ -1,21 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  ScrollView, 
+  TouchableOpacity, 
   Image,
-  Switch,
+  Switch, 
   Platform,
-  Linking,
   SafeAreaView,
   StatusBar,
   Dimensions,
-  Modal,
   TextInput,
   ActivityIndicator,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,102 +26,218 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import AppHeader from '../components/AppHeader';
 import MessageDialog from '../components/MessageDialog';
 import { apiService, UserProfile } from '../services/apiService';
+import BottomNavBar from '../components/BottomNavBar';
+import { ScreenName } from '../components/BottomNavBar';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const AccountScreen = () => {
   const { user: authUser, logout } = useAuth();
   const navigation = useNavigation<NavigationProp>();
-  const [notifications, setNotifications] = useState(true);
-  const [themeMode, setThemeMode] = useState('system');
-  const [currency, setCurrency] = useState('₱'); // Philippine Peso
+  const [activeScreen, setActiveScreen] = useState<ScreenName>('Home');
   
-  // Connected accounts state
-  const [connectedAccounts, setConnectedAccounts] = useState({
-    google: false,
-    apple: false
-  });
+  // App preferences state
+  const [notifications, setNotifications] = useState(true);
+  const [darkMode, setDarkMode] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [currency, setCurrency] = useState('₱'); // Philippine Peso
   
   // User profile state
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Logout confirmation dialog
-  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+  // Confirmation dialog
+  const [dialogVisible, setDialogVisible] = useState(false);
+  const [dialogProps, setDialogProps] = useState({
+    type: 'warning' as 'success' | 'error' | 'warning' | 'info',
+    title: '',
+    message: '',
+    actionText: '',
+    onAction: () => {},
+  });
   
   // Edit profile state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editName, setEditName] = useState('');
   const [saving, setSaving] = useState(false);
   
-  // Password change state
+  // Change password state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-
-  // Currency modal state
-  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
-
+  const [passwordErrors, setPasswordErrors] = useState<{
+    current?: string;
+    new?: string;
+    confirm?: string;
+    general?: string;
+  }>({});
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | 'very-strong' | null>(null);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [lastPasswordChange, setLastPasswordChange] = useState<Date | null>(null);
+  
   // Fetch user profile data
   useEffect(() => {
     fetchUserProfile();
-    checkConnectedAccounts();
   }, []);
 
   const fetchUserProfile = async () => {
     try {
-      setLoading(true);
+    setLoading(true);
       setError(null);
       const userProfile = await apiService.getUserProfile();
       setUser(userProfile);
+      
+      // Check for last password change date from AsyncStorage
+      try {
+        const lastChangeStr = await AsyncStorage.getItem('lastPasswordChange');
+        if (lastChangeStr) {
+          setLastPasswordChange(new Date(lastChangeStr));
+        }
+      } catch (err) {
+        console.error('Error getting last password change date:', err);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load profile data');
       console.error('Error fetching user profile:', err);
     } finally {
       setLoading(false);
-    }
-  };
-  
-  const checkConnectedAccounts = async () => {
-    try {
-      // In a real implementation, you would fetch this from your backend
-      // For now, we'll simulate this check with localStorage or hardcoded values
-      
-      // Check for Google connection (could use AsyncStorage or SecureStore)
-      const hasGoogleAccount = await AsyncStorage.getItem('connected_google') === 'true';
-      
-      // Update state
-      setConnectedAccounts({
-        google: hasGoogleAccount,
-        apple: false // We'll assume Apple is not connected for this example
-      });
-    } catch (err) {
-      console.error('Error checking connected accounts:', err);
+      setRefreshing(false);
     }
   };
 
+  const validatePassword = (password: string): boolean => {
+    // Minimum 8 characters
+    if (password.length < 8) {
+      setPasswordErrors(prev => ({
+        ...prev,
+        new: 'Password must be at least 8 characters'
+      }));
+      setPasswordStrength('weak');
+      return false;
+    }
+
+    const hasUppercase = /[A-Z]/.test(password);
+    const hasLowercase = /[a-z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+    
+    // Calculate strength
+    let strength = 0;
+    if (hasUppercase) strength++;
+    if (hasLowercase) strength++;
+    if (hasNumber) strength++;
+    if (hasSpecial) strength++;
+    
+    // Set strength level
+    if (strength === 1) setPasswordStrength('weak');
+    else if (strength === 2) setPasswordStrength('medium');
+    else if (strength === 3) setPasswordStrength('strong');
+    else if (strength === 4) setPasswordStrength('very-strong');
+    
+    // All requirements met?
+    const isValid = hasUppercase && hasLowercase && hasNumber && hasSpecial;
+    
+    if (!isValid) {
+      setPasswordErrors(prev => ({
+        ...prev,
+        new: 'Password must contain uppercase, lowercase, number, and special character'
+      }));
+    } else {
+      setPasswordErrors(prev => ({
+        ...prev,
+        new: undefined
+      }));
+    }
+    
+    return isValid;
+  };
+
+  const validateConfirmPassword = (password: string, confirmPass: string): boolean => {
+    const isValid = password === confirmPass;
+    
+    setPasswordErrors(prev => ({
+      ...prev,
+      confirm: isValid ? undefined : 'Passwords do not match'
+    }));
+    
+    return isValid;
+  };
+
+  const canChangePassword = (): boolean => {
+    if (!lastPasswordChange) return true;
+    
+    const now = new Date();
+    const daysSinceLastChange = Math.floor(
+      (now.getTime() - lastPasswordChange.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    
+    return daysSinceLastChange >= 7;
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchUserProfile();
+  };
+  
+  const handleNavigation = (screen: ScreenName) => {
+    setActiveScreen(screen);
+    if (screen === 'Home') {
+      navigation.navigate('Home' as any);
+    } else if (screen === 'Budget') {
+      navigation.navigate('Budget' as any);
+    } else if (screen === 'Transactions') {
+      navigation.navigate('Transactions' as any);
+    } else if (screen === 'Reports') {
+      navigation.navigate('Reports' as any);
+    }
+  };
+
+  const showConfirmDialog = (props: {
+    type: 'success' | 'error' | 'warning' | 'info',
+    title: string,
+    message: string,
+    actionText?: string,
+    onAction?: () => void,
+  }) => {
+    setDialogProps({
+      type: props.type,
+      title: props.title,
+      message: props.message,
+      actionText: props.actionText || 'OK',
+      onAction: props.onAction || (() => setDialogVisible(false)),
+    });
+    setDialogVisible(true);
+  };
+
   const handleLogoutPress = () => {
-    setShowLogoutConfirmation(true);
+    showConfirmDialog({
+      type: 'warning',
+      title: 'Sign Out',
+      message: 'Are you sure you want to sign out of your account?',
+      actionText: 'Sign Out',
+      onAction: handleLogout,
+    });
   };
 
   const handleLogout = async () => {
     try {
       setLoading(true);
       await logout();
-      navigation.reset({
-        index: 0,
+            navigation.reset({
+              index: 0,
         routes: [{ name: 'Login' as keyof RootStackParamList }],
-      });
+            });
     } catch (error) {
       console.error('Logout error:', error);
       Alert.alert('Error', 'Failed to log out. Please try again.');
     } finally {
       setLoading(false);
-      setShowLogoutConfirmation(false);
+      setDialogVisible(false);
     }
   };
 
@@ -142,7 +257,12 @@ const AccountScreen = () => {
       const updatedUser = await apiService.updateUserProfile(editName);
       setUser(updatedUser);
       setShowEditModal(false);
-      Alert.alert('Success', 'Profile updated successfully');
+      showConfirmDialog({
+        type: 'success',
+        title: 'Profile Updated',
+        message: 'Your profile has been updated successfully',
+        actionText: 'Great!',
+      });
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to update profile');
     } finally {
@@ -151,228 +271,331 @@ const AccountScreen = () => {
   };
 
   const handleChangePassword = () => {
+    if (!canChangePassword()) {
+      const daysToWait = 7 - Math.floor(
+        (new Date().getTime() - (lastPasswordChange?.getTime() || 0)) / (1000 * 60 * 60 * 24)
+      );
+      
+      showConfirmDialog({
+        type: 'warning',
+        title: 'Password Change Restricted',
+        message: `You can only change your password once every 7 days. Please try again in ${daysToWait} day${daysToWait !== 1 ? 's' : ''}.`,
+      });
+      return;
+    }
+    
+    // Reset state
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
-    setPasswordError(null);
+    setPasswordErrors({});
+    setPasswordStrength(null);
     setShowPasswordModal(true);
   };
-
-  const handleSavePassword = async () => {
-    // Validate passwords
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setPasswordError('All fields are required');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordError('New passwords do not match');
-      return;
-    }
-
-    if (newPassword.length < 8) {
-      setPasswordError('Password must be at least 8 characters');
-      return;
-    }
-
-    try {
-      setSaving(true);
-      setPasswordError(null);
-      await apiService.changePassword({
-        currentPassword,
-        newPassword
-      });
-      setShowPasswordModal(false);
-      Alert.alert('Success', 'Password changed successfully');
-    } catch (err: any) {
-      setPasswordError(err.message || 'Failed to change password');
-    } finally {
-      setSaving(false);
+  
+  const handlePasswordChange = (password: string) => {
+    setNewPassword(password);
+    validatePassword(password);
+    
+    if (confirmPassword) {
+      validateConfirmPassword(password, confirmPassword);
     }
   };
   
-  // Handle currency selection
-  const handleCurrencySelect = (selectedCurrency: string) => {
-    setCurrency(selectedCurrency);
-    setShowCurrencyModal(false);
-    // In a real app, you would save this to user preferences
+  const handleConfirmPasswordChange = (password: string) => {
+    setConfirmPassword(password);
+    validateConfirmPassword(newPassword, password);
   };
 
-  const renderSection = (title: string, children: React.ReactNode) => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
+  const handlePasswordFocus = () => {
+    setIsPasswordFocused(true);
+  };
+  
+  const handlePasswordBlur = () => {
+    setIsPasswordFocused(false);
+  };
+  
+  const handleSavePassword = async () => {
+    // Reset any previous errors
+    setPasswordErrors({});
+    
+    // Validate inputs
+    let hasError = false;
+    
+    if (!currentPassword) {
+      setPasswordErrors(prev => ({
+        ...prev,
+        current: 'Current password is required'
+      }));
+      hasError = true;
+    }
+    
+    if (!newPassword) {
+      setPasswordErrors(prev => ({
+        ...prev,
+        new: 'New password is required'
+      }));
+      hasError = true;
+    }
+    
+    if (!confirmPassword) {
+      setPasswordErrors(prev => ({
+        ...prev,
+        confirm: 'Please confirm your password'
+      }));
+      hasError = true;
+    }
+    
+    if (hasError) return;
+    
+    // Validate password strength and confirmation
+    const isPasswordValid = validatePassword(newPassword);
+    const isConfirmValid = validateConfirmPassword(newPassword, confirmPassword);
+    
+    if (!isPasswordValid || !isConfirmValid) return;
+    
+    // Check that new password is different from current
+    if (currentPassword === newPassword) {
+      setPasswordErrors(prev => ({
+        ...prev,
+        new: 'New password must be different from your current password'
+      }));
+      return;
+    }
+    
+    try {
+      setChangingPassword(true);
+      await apiService.changePassword({
+        currentPassword,
+        newPassword,
+      });
+      
+      // Store the date of password change
+      await AsyncStorage.setItem('lastPasswordChange', new Date().toISOString());
+      setLastPasswordChange(new Date());
+      
+      // Show success message within the modal
+      setPasswordErrors({
+        general: 'Password changed successfully!'
+      });
+      
+      // Delay closing modal slightly for better feedback
+      setTimeout(() => {
+        setShowPasswordModal(false);
+        showConfirmDialog({
+          type: 'success',
+          title: 'Password Changed',
+          message: 'Your password has been changed successfully.',
+        });
+      }, 1000);
+    } catch (err: any) {
+      // Don't log the error to console since it will be shown in the UI
+      // Display appropriate error message based on error type
+      if (err.message.includes('Current password is incorrect')) {
+        setPasswordErrors({
+          current: 'Current password is incorrect'
+        });
+      } else {
+        setPasswordErrors({
+          general: err.message || 'Failed to change password. Please try again.'
+        });
+      }
+    } finally {
+      setChangingPassword(false);
+    }
+  };
 
-  const renderSettingItem = (icon: string, label: string, onPress: () => void, rightComponent?: React.ReactNode) => (
-    <TouchableOpacity 
-      style={styles.settingItem} 
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <View style={styles.settingItemLeft}>
-        <View style={styles.iconContainer}>
-          <Ionicons name={icon as any} size={20} color={theme.colors.primary} />
+  const openPrivacyPolicy = () => {
+    // In a real app, navigate to privacy policy screen or open web URL
+    Alert.alert('Privacy Policy', 'This would open the privacy policy document.');
+  };
+
+  const openTermsOfService = () => {
+    // In a real app, navigate to terms of service screen or open web URL
+    Alert.alert('Terms of Service', 'This would open the terms of service document.');
+  };
+  
+  // Render loading state
+  if (loading && !refreshing) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <AppHeader showBackButton={false} showNotifications={true} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.loadingText}>Loading your profile...</Text>
         </View>
-        <Text style={styles.settingItemLabel}>{label}</Text>
-      </View>
-      {rightComponent || <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />}
-    </TouchableOpacity>
-  );
+        <BottomNavBar activeScreen={activeScreen} onPress={handleNavigation} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#3770FF" />
-      
-      <AppHeader 
-        showBackButton={true}
-        onBackPress={() => navigation.goBack()}
-        showProfile={false}
-        showNotifications={false}
-      />
-
-      {loading && !user ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={styles.loadingText}>Loading profile...</Text>
-        </View>
-      ) : error ? (
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle-outline" size={48} color={theme.colors.error} />
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity 
-            style={styles.retryButton}
-            onPress={fetchUserProfile}
-          >
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <ScrollView 
-          style={styles.scrollView} 
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollViewContent}
-        >
-          {/* User Profile Header */}
-          <View style={styles.profileHeaderContainer}>
-            <View style={styles.profileHeader}>
-              <View style={styles.avatarContainer}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>
-                    {user?.name?.charAt(0)?.toUpperCase() || 'U'}
-                  </Text>
-                </View>
-              </View>
-              
-              <View style={styles.userInfoContainer}>
-                <Text style={styles.userName}>{user?.name || 'User Name'}</Text>
-                <View style={styles.emailContainer}>
-                  <Ionicons name="mail-outline" size={16} color={theme.colors.textLight} />
-                  <Text style={styles.userEmail}>{user?.email || 'user@example.com'}</Text>
-                </View>
-              </View>
-              
-              <TouchableOpacity 
-                style={styles.editProfileButton}
-                activeOpacity={0.7}
-                onPress={handleEditProfile}
-              >
-                <Text style={styles.editProfileText}>Edit Profile</Text>
+      <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background} />
+      <AppHeader showBackButton={false} showNotifications={true} />
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollViewContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[theme.colors.primary]}
+          />
+        }
+      >
+        {error ? (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle-outline" size={48} color={theme.colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={fetchUserProfile}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {/* Profile Info (modern, centered, with icon) */}
+            <View style={styles.profileInfoContainer}>
+              <Ionicons name="person-circle" size={64} color={theme.colors.primary} style={styles.profileIcon} />
+              <Text style={styles.userName}>{user?.name || 'User'}</Text>
+              <Text style={styles.userEmail}>{user?.email || 'user@example.com'}</Text>
+              <TouchableOpacity style={styles.editProfileButton} onPress={handleEditProfile}>
+                <Text style={styles.editProfileText}>Edit</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Section label */}
+            <Text style={styles.sectionLabel}>Settings</Text>
+
+            {/* Settings Sections */}
+            <View style={styles.settingsContainer}>
+              {/* Account Section */}
+              <View style={styles.settingsSection}>
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  onPress={handleChangePassword}
+                  disabled={!canChangePassword()}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.settingsItemLeft}>
+                    <Ionicons name="lock-closed-outline" size={22} color={theme.colors.primary} style={styles.settingsIcon} />
+                    <View style={styles.settingsItemContent}>
+                      <Text style={styles.settingsItemText}>Change Password</Text>
+                      {!canChangePassword() && (
+                        <Text style={styles.settingsItemSubtext}>
+                          Available after 7 days from last change
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.settingsItem}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.settingsItemLeft}>
+                    <Ionicons name="mail-outline" size={22} color="#4CAF50" style={styles.settingsIcon} />
+                    <View style={styles.settingsItemContent}>
+                      <Text style={styles.settingsItemText}>Email Notifications</Text>
+                      <Text style={styles.settingsItemSubtext}>Receive alerts and updates via email</Text>
+                    </View>
+                  </View>
+                  <Switch
+                    trackColor={{ false: theme.colors.lightGray, true: `${theme.colors.primary}80` }}
+                    thumbColor={notifications ? theme.colors.primary : '#f4f3f4'}
+                    ios_backgroundColor="#3e3e3e"
+                    onValueChange={() => setNotifications(!notifications)}
+                    value={notifications}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* Appearance Section */}
+              <View style={styles.settingsSection}>
+                <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7}>
+                  <View style={styles.settingsItemLeft}>
+                    <Ionicons name="moon-outline" size={22} color="#FFC107" style={styles.settingsIcon} />
+                    <View style={styles.settingsItemContent}>
+                      <Text style={styles.settingsItemText}>Dark Mode</Text>
+                      <Text style={styles.settingsItemSubtext}>Switch to dark theme</Text>
+                    </View>
+                  </View>
+                  <Switch
+                    trackColor={{ false: theme.colors.lightGray, true: `${theme.colors.primary}80` }}
+                    thumbColor={darkMode ? theme.colors.primary : '#f4f3f4'}
+                    ios_backgroundColor="#3e3e3e"
+                    onValueChange={() => setDarkMode(!darkMode)}
+                    value={darkMode}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7}>
+                  <View style={styles.settingsItemLeft}>
+                    <Ionicons name="finger-print-outline" size={22} color="#00BCD4" style={styles.settingsIcon} />
+                    <View style={styles.settingsItemContent}>
+                      <Text style={styles.settingsItemText}>Biometric Login</Text>
+                      <Text style={styles.settingsItemSubtext}>Use fingerprint or Face ID</Text>
+                    </View>
           </View>
+                  <Switch
+                    trackColor={{ false: theme.colors.lightGray, true: `${theme.colors.primary}80` }}
+                    thumbColor={biometricEnabled ? theme.colors.primary : '#f4f3f4'}
+                    ios_backgroundColor="#3e3e3e"
+                    onValueChange={() => setBiometricEnabled(!biometricEnabled)}
+                    value={biometricEnabled}
+                  />
+                </TouchableOpacity>
+        </View>
 
-          {/* Account Actions */}
-          {renderSection('Account Settings', (
-            <View>
-              {renderSettingItem('lock-closed-outline', 'Change Password', handleChangePassword)}
-              {renderSettingItem('shield-checkmark-outline', 'Privacy & Security', () => {})}
+              {/* Help & Support Section */}
+              <View style={styles.settingsSection}>
+                <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7}>
+                  <View style={styles.settingsItemLeft}>
+                    <Ionicons name="help-circle-outline" size={22} color="#3F51B5" style={styles.settingsIcon} />
+                    <Text style={styles.settingsItemText}>Help Center</Text>
             </View>
-          ))}
-
-          {/* Security & Authentication */}
-          {renderSection('Connected Accounts', (
-            <View>
-              {renderSettingItem('logo-google', 'Google Account', () => {}, (
-                <Text style={connectedAccounts.google ? styles.connectedText : styles.notConnectedText}>
-                  {connectedAccounts.google ? 'Connected' : 'Not Connected'}
-                </Text>
-              ))}
-              {renderSettingItem('logo-apple', 'Apple ID', () => {}, (
-                <Text style={connectedAccounts.apple ? styles.connectedText : styles.notConnectedText}>
-                  {connectedAccounts.apple ? 'Connected' : 'Not Connected'}
-                </Text>
-              ))}
-            </View>
-          ))}
-
-          {/* App Settings */}
-          {renderSection('App Settings', (
-            <View>
-              {renderSettingItem('cash-outline', 'Currency', () => setShowCurrencyModal(true), (
-                <View style={styles.currencySelector}>
-                  <Text style={styles.currencyText}>{currency}</Text>
-                </View>
-              ))}
-              {renderSettingItem('notifications-outline', 'Notifications', () => {}, (
-                <Switch
-                  value={notifications}
-                  onValueChange={setNotifications}
-                  trackColor={{ false: theme.colors.lightGray, true: theme.colors.primary }}
-                  thumbColor={theme.colors.white}
-                  ios_backgroundColor={theme.colors.lightGray}
-                />
-              ))}
-              {renderSettingItem('color-palette-outline', 'Theme', () => {}, (
-                <View style={styles.themeSelector}>
-                  <Text style={styles.themeText}>{themeMode}</Text>
-                </View>
-              ))}
-            </View>
-          ))}
-
-          {/* Support & Legal */}
-          {renderSection('Support & Legal', (
-            <View>
-              {renderSettingItem('help-circle-outline', 'Help & FAQs', () => {})}
-              {renderSettingItem('mail-outline', 'Contact Support', () => {})}
-              {renderSettingItem('document-text-outline', 'Privacy Policy', () => {})}
-              {renderSettingItem('document-text-outline', 'Terms of Service', () => {})}
-            </View>
-          ))}
-
-          {/* Sign Out */}
-          <TouchableOpacity 
-            style={styles.logoutButton} 
-            onPress={handleLogoutPress}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="log-out-outline" size={20} color={theme.colors.white} style={styles.logoutIcon} />
-            <Text style={styles.logoutText}>Sign Out</Text>
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
           </TouchableOpacity>
-        </ScrollView>
-      )}
+                <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7}>
+                  <View style={styles.settingsItemLeft}>
+                    <Ionicons name="chatbox-ellipses-outline" size={22} color="#9C27B0" style={styles.settingsIcon} />
+                    <Text style={styles.settingsItemText}>Contact Support</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
+          </TouchableOpacity>
+                <TouchableOpacity style={styles.settingsItem} onPress={openPrivacyPolicy} activeOpacity={0.7}>
+                  <View style={styles.settingsItemLeft}>
+                    <Ionicons name="shield-checkmark-outline" size={22} color="#F44336" style={styles.settingsIcon} />
+                    <Text style={styles.settingsItemText}>Privacy Policy</Text>
+        </View>
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.settingsItem} onPress={openTermsOfService} activeOpacity={0.7}>
+                  <View style={styles.settingsItemLeft}>
+                    <Ionicons name="document-text-outline" size={22} color="#795548" style={styles.settingsIcon} />
+                    <Text style={styles.settingsItemText}>Terms of Service</Text>
+            </View>
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
+          </TouchableOpacity>
+        </View>
+            </View>
 
-      {/* Logout Confirmation Dialog */}
-      <MessageDialog
-        visible={showLogoutConfirmation}
-        type="warning"
-        title="Sign Out"
-        message="Are you sure you want to sign out of your account?"
-        onDismiss={() => setShowLogoutConfirmation(false)}
-        onAction={handleLogout}
-        actionText="Sign Out"
-        autoDismiss={false}
-      />
-
+            {/* Sign Out Button */}
+            <TouchableOpacity style={styles.signOutButton} onPress={handleLogoutPress}>
+              <Text style={styles.signOutText}>Sign Out</Text>
+          </TouchableOpacity>
+          
+            <Text style={styles.versionText}>Version 1.0.0</Text>
+          </>
+        )}
+      </ScrollView>
+      <BottomNavBar activeScreen={activeScreen} onPress={handleNavigation} />
       {/* Edit Profile Modal */}
-      <Modal
-        visible={showEditModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowEditModal(false)}
-      >
+      {showEditModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
@@ -393,9 +616,9 @@ const AccountScreen = () => {
                 onChangeText={setEditName}
                 placeholder="Enter your name"
                 autoCapitalize="words"
-              />
-            </View>
-            
+            />
+          </View>
+          
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={styles.cancelButton}
@@ -419,17 +642,12 @@ const AccountScreen = () => {
             </View>
           </View>
         </View>
-      </Modal>
+      )}
 
       {/* Change Password Modal */}
-      <Modal
-        visible={showPasswordModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowPasswordModal(false)}
-      >
+      {showPasswordModal && (
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
+          <View style={[styles.modalContainer, styles.passwordModalContainer]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Change Password</Text>
               <TouchableOpacity
@@ -441,131 +659,144 @@ const AccountScreen = () => {
             </View>
             
             <View style={styles.modalBody}>
-              {passwordError && (
-                <View style={styles.errorMessage}>
-                  <Ionicons name="alert-circle-outline" size={18} color={theme.colors.error} />
-                  <Text style={styles.errorMessageText}>{passwordError}</Text>
+              {passwordErrors.general && (
+                <View style={[
+                  styles.errorBanner, 
+                  passwordErrors.general.includes('successfully') && styles.successBanner
+                ]}>
+                  <Ionicons 
+                    name={passwordErrors.general.includes('successfully') ? "checkmark-circle" : "alert-circle-outline"} 
+                    size={20} 
+                    color={passwordErrors.general.includes('successfully') ? theme.colors.success : theme.colors.error} 
+                  />
+                  <Text style={[
+                    styles.errorBannerText,
+                    passwordErrors.general.includes('successfully') && styles.successBannerText
+                  ]}>{passwordErrors.general}</Text>
                 </View>
               )}
               
               <Text style={styles.inputLabel}>Current Password</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, passwordErrors.current && styles.inputError]}
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
-                placeholder="Enter current password"
+                placeholder="Enter your current password"
                 secureTextEntry
               />
+              {passwordErrors.current && (
+                <Text style={styles.passwordError}>{passwordErrors.current}</Text>
+              )}
               
-              <Text style={styles.inputLabel}>New Password</Text>
+              <Text style={[styles.inputLabel, { marginTop: 16 }]}>New Password</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, passwordErrors.new && styles.inputError]}
                 value={newPassword}
-                onChangeText={setNewPassword}
-                placeholder="Enter new password"
+                onChangeText={handlePasswordChange}
+                onFocus={handlePasswordFocus}
+                onBlur={handlePasswordBlur}
+                placeholder="Create a secure password"
                 secureTextEntry
               />
+              {passwordErrors.new && (
+                <Text style={styles.passwordError}>{passwordErrors.new}</Text>
+              )}
               
-              <Text style={styles.inputLabel}>Confirm New Password</Text>
+              {(isPasswordFocused || passwordStrength) && (
+                <View style={styles.strengthContainer}>
+                  <Text style={styles.strengthLabel}>
+                    Password Strength: {
+                      passwordStrength === 'weak' ? 'Weak' :
+                      passwordStrength === 'medium' ? 'Medium' :
+                      passwordStrength === 'strong' ? 'Strong' :
+                      passwordStrength === 'very-strong' ? 'Very Strong' : 'Weak'
+                    }
+                  </Text>
+                  <View style={styles.strengthMeter}>
+                    <View 
+                      style={[
+                        styles.strengthIndicator, 
+                        styles.strengthWeak,
+                        passwordStrength && styles.strengthActive
+                      ]} 
+                    />
+                    <View 
+                      style={[
+                        styles.strengthIndicator, 
+                        styles.strengthMedium,
+                        (passwordStrength === 'medium' || passwordStrength === 'strong' || passwordStrength === 'very-strong') && styles.strengthActive
+                      ]} 
+                    />
+                    <View 
+                      style={[
+                        styles.strengthIndicator, 
+                        styles.strengthStrong,
+                        (passwordStrength === 'strong' || passwordStrength === 'very-strong') && styles.strengthActive
+                      ]} 
+                    />
+                    <View 
+                      style={[
+                        styles.strengthIndicator, 
+                        styles.strengthVeryStrong,
+                        passwordStrength === 'very-strong' && styles.strengthActive
+                      ]} 
+                    />
+                  </View>
+                  <Text style={styles.passwordHint}>
+                    Password must be at least 8 characters and include uppercase, lowercase, number, and special character.
+                  </Text>
+            </View>
+              )}
+              
+              <Text style={[styles.inputLabel, { marginTop: 16 }]}>Confirm New Password</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, passwordErrors.confirm && styles.inputError]}
                 value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                placeholder="Confirm new password"
+                onChangeText={handleConfirmPasswordChange}
+                placeholder="Confirm your new password"
                 secureTextEntry
               />
+              {passwordErrors.confirm && (
+                <Text style={styles.passwordError}>{passwordErrors.confirm}</Text>
+              )}
             </View>
             
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={styles.cancelButton}
                 onPress={() => setShowPasswordModal(false)}
-                disabled={saving}
+                disabled={changingPassword}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              
+          </TouchableOpacity>
+          
               <TouchableOpacity
                 style={styles.saveButton}
                 onPress={handleSavePassword}
-                disabled={saving}
+                disabled={changingPassword}
               >
-                {saving ? (
+                {changingPassword ? (
                   <ActivityIndicator size="small" color={theme.colors.white} />
                 ) : (
-                  <Text style={styles.saveButtonText}>Update</Text>
+                  <Text style={styles.saveButtonText}>Change Password</Text>
                 )}
               </TouchableOpacity>
             </View>
-          </View>
         </View>
-      </Modal>
+        </View>
+      )}
 
-      {/* Currency Selection Modal */}
-      <Modal
-        visible={showCurrencyModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowCurrencyModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Currency</Text>
-              <TouchableOpacity
-                onPress={() => setShowCurrencyModal(false)}
-                style={styles.closeButton}
-              >
-                <Ionicons name="close" size={24} color={theme.colors.text} />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.modalBody}>
-              <TouchableOpacity
-                style={[styles.currencyOption, currency === '₱' ? styles.selectedCurrency : null]}
-                onPress={() => handleCurrencySelect('₱')}
-              >
-                <Text style={styles.currencySymbol}>₱</Text>
-                <View style={styles.currencyDetails}>
-                  <Text style={styles.currencyName}>Philippine Peso</Text>
-                  <Text style={styles.currencyCode}>PHP</Text>
-                </View>
-                {currency === '₱' && (
-                  <Ionicons name="checkmark-circle" size={24} color={theme.colors.primary} />
-                )}
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.currencyOption, currency === '$' ? styles.selectedCurrency : null]}
-                onPress={() => handleCurrencySelect('$')}
-              >
-                <Text style={styles.currencySymbol}>$</Text>
-                <View style={styles.currencyDetails}>
-                  <Text style={styles.currencyName}>US Dollar</Text>
-                  <Text style={styles.currencyCode}>USD</Text>
-                </View>
-                {currency === '$' && (
-                  <Ionicons name="checkmark-circle" size={24} color={theme.colors.primary} />
-                )}
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.currencyOption, currency === '€' ? styles.selectedCurrency : null]}
-                onPress={() => handleCurrencySelect('€')}
-              >
-                <Text style={styles.currencySymbol}>€</Text>
-                <View style={styles.currencyDetails}>
-                  <Text style={styles.currencyName}>Euro</Text>
-                  <Text style={styles.currencyCode}>EUR</Text>
-                </View>
-                {currency === '€' && (
-                  <Ionicons name="checkmark-circle" size={24} color={theme.colors.primary} />
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Confirmation Dialog */}
+      <MessageDialog
+        visible={dialogVisible}
+        type={dialogProps.type}
+        title={dialogProps.title}
+        message={dialogProps.message}
+        onDismiss={() => setDialogVisible(false)}
+        onAction={dialogProps.onAction}
+        actionText={dialogProps.actionText}
+        autoDismiss={dialogProps.type === 'success'}
+      />
     </SafeAreaView>
   );
 };
@@ -577,214 +808,169 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   scrollViewContent: {
-    paddingBottom: theme.spacing.xl,
+    paddingBottom: 24,
   },
-  section: {
-    marginBottom: theme.spacing.lg,
-    paddingHorizontal: theme.spacing.md,
-  },
-  sectionTitle: {
-    ...theme.typography.h3,
-    color: theme.colors.textLight,
-    marginBottom: theme.spacing.sm,
-    marginTop: theme.spacing.md,
-    marginLeft: theme.spacing.xs,
-  },
-  // Loading and error state styles
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: theme.spacing.lg,
+    minHeight: 300,
   },
   loadingText: {
-    ...theme.typography.body,
+    marginTop: 12,
     color: theme.colors.textLight,
-    marginTop: theme.spacing.md,
+    fontSize: 15,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: theme.spacing.lg,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
+    minHeight: 300,
   },
   errorText: {
-    ...theme.typography.body,
+    fontSize: 16,
     color: theme.colors.text,
     textAlign: 'center',
-    marginTop: theme.spacing.md,
-    marginBottom: theme.spacing.lg,
+    marginTop: 12,
+    marginBottom: 24,
   },
   retryButton: {
     backgroundColor: theme.colors.primary,
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 8,
   },
   retryButtonText: {
-    ...theme.typography.body,
     color: theme.colors.white,
     fontWeight: '600',
+    fontSize: 14,
   },
-  // Modern profile header styles
-  profileHeaderContainer: {
-    paddingHorizontal: theme.spacing.md,
-    marginBottom: theme.spacing.lg,
-    marginTop: theme.spacing.md,
-  },
-  profileHeader: {
+  
+  // Profile Info (modern, centered, with icon)
+  profileInfoContainer: {
+    alignItems: 'center',
+    paddingTop: 32,
+    paddingBottom: 16,
     backgroundColor: theme.colors.white,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.lg,
-    alignItems: 'center',
-    ...theme.shadows.md,
   },
-  avatarContainer: {
-    marginBottom: theme.spacing.md,
-  },
-  avatar: {
-    width: 80,
-    height: 80,
+  profileIcon: {
+    marginBottom: 8,
+    backgroundColor: theme.colors.background,
     borderRadius: 40,
-    backgroundColor: theme.colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 4,
-    borderColor: 'rgba(255, 255, 255, 0.8)',
-    ...theme.shadows.sm,
-  },
-  avatarText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: theme.colors.white,
-  },
-  userInfoContainer: {
-    alignItems: 'center',
-    marginBottom: theme.spacing.md,
   },
   userName: {
-    ...theme.typography.h2,
-    color: theme.colors.text,
+    fontSize: 22,
     fontWeight: '700',
-    marginBottom: theme.spacing.xs,
-  },
-  emailContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    color: theme.colors.text,
+    marginBottom: 2,
+    textAlign: 'center',
   },
   userEmail: {
-    ...theme.typography.body,
+    fontSize: 14,
     color: theme.colors.textLight,
-    marginLeft: theme.spacing.xs,
+    marginBottom: 8,
+    textAlign: 'center',
   },
   editProfileButton: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.borderRadius.full,
-    ...theme.shadows.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'center',
   },
   editProfileText: {
-    ...theme.typography.caption,
-    color: theme.colors.white,
+    color: theme.colors.primary,
     fontWeight: '600',
+    fontSize: 15,
   },
-  // Setting styles
-  settingItem: {
+  sectionLabel: {
+    fontSize: 13,
+    color: theme.colors.textLight,
+    fontWeight: '600',
+    marginTop: 18,
+    marginBottom: 6,
+    marginLeft: 20,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  settingsContainer: {
+    paddingHorizontal: 0,
+  },
+  settingsSection: {
+    marginBottom: 18,
+  },
+  settingsItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     backgroundColor: theme.colors.white,
-    borderRadius: theme.borderRadius.md,
-    marginBottom: theme.spacing.xs,
-    ...theme.shadows.sm,
-    marginHorizontal: theme.spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.lightGray,
   },
-  settingItemLeft: {
+  settingsItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
-  iconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: theme.colors.primary + '10',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: theme.spacing.md,
+  settingsIcon: {
+    marginRight: 16,
   },
-  settingItemLabel: {
-    ...theme.typography.body,
+  settingsItemContent: {
+    flex: 1,
+  },
+  settingsItemText: {
+    fontSize: 16,
     color: theme.colors.text,
-  },
-  connectedText: {
-    ...theme.typography.caption,
-    color: theme.colors.success,
-    fontWeight: '600',
-  },
-  notConnectedText: {
-    ...theme.typography.caption,
-    color: theme.colors.textLight,
     fontWeight: '500',
   },
-  currencySelector: {
-    backgroundColor: theme.colors.primary + '10',
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.sm,
-  },
-  currencyText: {
-    ...theme.typography.body,
-    color: theme.colors.primary,
-    fontWeight: '600',
-  },
-  themeSelector: {
-    backgroundColor: theme.colors.lightGray + '50',
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.sm,
-  },
-  themeText: {
-    ...theme.typography.caption,
+  settingsItemSubtext: {
+    fontSize: 12,
     color: theme.colors.textLight,
-    textTransform: 'capitalize',
+    marginTop: 2,
   },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: theme.spacing.lg,
-    marginTop: theme.spacing.md,
-    padding: theme.spacing.md,
+  signOutButton: {
+    marginTop: 32,
+    alignSelf: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    borderRadius: 24,
     backgroundColor: theme.colors.error,
-    borderRadius: theme.borderRadius.lg,
-    ...theme.shadows.md,
+    marginBottom: 8,
+    elevation: 2,
   },
-  logoutIcon: {
-    marginRight: theme.spacing.xs,
-  },
-  logoutText: {
-    ...theme.typography.body,
+  signOutText: {
     color: theme.colors.white,
-    fontWeight: '600',
+    fontWeight: '700',
+    fontSize: 16,
+    textAlign: 'center',
+    letterSpacing: 0.5,
   },
+  versionText: {
+    textAlign: 'center',
+    color: theme.colors.textLight,
+    fontSize: 12,
+    marginTop: 24,
+    marginBottom: 16,
+  },
+  
   // Modal styles
   modalOverlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContainer: {
-    width: width * 0.9,
     backgroundColor: theme.colors.white,
-    borderRadius: theme.borderRadius.lg,
-    ...theme.shadows.md,
+    borderRadius: 16,
+    width: width * 0.88,
+    maxWidth: 400,
+    overflow: 'hidden',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -792,109 +978,144 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.lightGray,
-    padding: theme.spacing.md,
+    padding: 16,
   },
   modalTitle: {
-    ...theme.typography.h3,
+    fontSize: 18,
+    fontWeight: '600',
     color: theme.colors.text,
   },
   closeButton: {
-    padding: theme.spacing.xs,
+    padding: 4,
   },
   modalBody: {
-    padding: theme.spacing.md,
+    padding: 16,
   },
   inputLabel: {
-    ...theme.typography.body,
+    fontSize: 14,
+    fontWeight: '500',
     color: theme.colors.textLight,
-    marginBottom: theme.spacing.xs,
+    marginBottom: 8,
   },
   input: {
     height: 48,
     borderWidth: 1,
     borderColor: theme.colors.lightGray,
-    borderRadius: theme.borderRadius.md,
-    paddingHorizontal: theme.spacing.md,
-    marginBottom: theme.spacing.md,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    fontSize: 15,
     color: theme.colors.text,
-    backgroundColor: theme.colors.background,
   },
   modalFooter: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    padding: theme.spacing.md,
+    padding: 16,
     borderTopWidth: 1,
     borderTopColor: theme.colors.lightGray,
   },
   cancelButton: {
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    marginRight: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.lightGray,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginRight: 12,
   },
   cancelButtonText: {
-    ...theme.typography.body,
-    color: theme.colors.text,
+    color: theme.colors.textLight,
+    fontWeight: '600',
+    fontSize: 14,
   },
   saveButton: {
     backgroundColor: theme.colors.primary,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
     minWidth: 80,
     alignItems: 'center',
   },
   saveButtonText: {
-    ...theme.typography.body,
     color: theme.colors.white,
     fontWeight: '600',
+    fontSize: 14,
   },
-  errorMessage: {
+  
+  // Password modal styles
+  passwordModalContainer: {
+    maxHeight: height * 0.8,
+  },
+  errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.error + '15',
-    padding: theme.spacing.sm,
-    borderRadius: theme.borderRadius.md,
-    marginBottom: theme.spacing.md,
+    backgroundColor: 'rgba(255, 82, 82, 0.1)',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
   },
-  errorMessageText: {
-    ...theme.typography.caption,
+  errorBannerText: {
     color: theme.colors.error,
-    marginLeft: theme.spacing.xs,
+    marginLeft: 8,
     flex: 1,
+    fontSize: 14,
   },
-  // Currency Options
-  currencyOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.lightGray,
+  inputError: {
+    borderColor: theme.colors.error,
   },
-  selectedCurrency: {
-    backgroundColor: theme.colors.primary + '10',
+  passwordError: {
+    color: theme.colors.error,
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 2,
   },
-  currencySymbol: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: theme.colors.primary,
-    width: 40,
-    textAlign: 'center',
+  strengthContainer: {
+    marginTop: 8,
+    marginBottom: 16,
   },
-  currencyDetails: {
-    flex: 1,
-    marginLeft: theme.spacing.md,
-  },
-  currencyName: {
-    ...theme.typography.body,
-    color: theme.colors.text,
-    fontWeight: '600',
-  },
-  currencyCode: {
-    ...theme.typography.caption,
+  strengthLabel: {
+    fontSize: 14,
     color: theme.colors.textLight,
+    marginBottom: 6,
+  },
+  strengthMeter: {
+    flexDirection: 'row',
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  strengthIndicator: {
+    flex: 1,
+    marginHorizontal: 2,
+    backgroundColor: theme.colors.lightGray,
+  },
+  strengthActive: {
+    opacity: 1,
+  },
+  strengthWeak: {
+    backgroundColor: theme.colors.error,
+    opacity: 0.3,
+  },
+  strengthMedium: {
+    backgroundColor: theme.colors.warning,
+    opacity: 0.3,
+  },
+  strengthStrong: {
+    backgroundColor: theme.colors.success,
+    opacity: 0.3,
+  },
+  strengthVeryStrong: {
+    backgroundColor: '#4CAF50',
+    opacity: 0.3,
+  },
+  passwordHint: {
+    fontSize: 12,
+    color: theme.colors.textLight,
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  successBanner: {
+    backgroundColor: 'rgba(156, 255, 156, 0.1)',
+  },
+  successBannerText: {
+    color: theme.colors.success,
   },
 });
 

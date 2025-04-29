@@ -74,6 +74,19 @@ exports.createTransaction = async (req, res) => {
 // Update a transaction
 exports.updateTransaction = async (req, res) => {
   try {
+    // Get original transaction
+    const originalTransaction = await Transaction.findOne({
+      _id: req.params.id,
+      user: req.user._id
+    });
+    
+    if (!originalTransaction) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'No transaction found with that ID'
+      });
+    }
+    
     const transaction = await Transaction.findOneAndUpdate(
       {
         _id: req.params.id,
@@ -85,13 +98,6 @@ exports.updateTransaction = async (req, res) => {
         runValidators: true
       }
     );
-    
-    if (!transaction) {
-      return res.status(404).json({
-        status: 'fail',
-        message: 'No transaction found with that ID'
-      });
-    }
     
     res.status(200).json({
       status: 'success',

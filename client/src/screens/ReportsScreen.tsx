@@ -156,6 +156,7 @@ const ReportsScreen = observer(() => {
     try {
       const budgetsData = await budgetService.getBudgets();
       console.log('Budgets fetched:', budgetsData?.length || 0);
+      // We'll set the budgets directly here, and sort them in the render
       setBudgets(budgetsData || []);
     } catch (error) {
       console.error('Error fetching budget data:', error);
@@ -470,23 +471,45 @@ const ReportsScreen = observer(() => {
 
         {/* Key Metrics */}
         <View style={styles.metricsContainer}>
-          <View style={[styles.metricCard, styles.cardShadow]}>
-            <Text style={styles.metricLabel}>Total Income</Text>
-            <Text style={[styles.metricValue, styles.incomeValue]}>
-              {formatCurrency(totalIncome)}
-            </Text>
-          </View>
-          <View style={[styles.metricCard, styles.cardShadow]}>
-            <Text style={styles.metricLabel}>Total Expenses</Text>
-            <Text style={[styles.metricValue, styles.expenseValue]}>
-              {formatCurrency(totalExpense)}
-            </Text>
-          </View>
-          <View style={[styles.metricCard, styles.cardShadow]}>
-            <Text style={styles.metricLabel}>Net Savings</Text>
-            <Text style={[styles.metricValue, netSavings >= 0 ? styles.incomeValue : styles.expenseValue]}>
-              {formatCurrency(Math.abs(netSavings))}
-            </Text>
+          <View style={[styles.metricsCard, styles.cardShadow]}>
+            <View style={styles.metricRow}>
+              <View style={styles.metricItem}>
+                <View style={[styles.metricIndicator, styles.incomeIndicator]} />
+                <View>
+                  <Text style={styles.metricLabel}>Income</Text>
+                  <Text style={[styles.metricValue, styles.incomeValue]}>
+                    {formatCurrency(totalIncome)}
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.metricDivider} />
+              
+              <View style={styles.metricItem}>
+                <View style={[styles.metricIndicator, styles.expenseIndicator]} />
+                <View>
+                  <Text style={styles.metricLabel}>Expenses</Text>
+                  <Text style={[styles.metricValue, styles.expenseValue]}>
+                    {formatCurrency(totalExpense)}
+                  </Text>
+                </View>
+              </View>
+              
+              <View style={styles.metricDivider} />
+              
+              <View style={styles.metricItem}>
+                <View style={[
+                  styles.metricIndicator,
+                  netSavings >= 0 ? styles.savingsPositiveIndicator : styles.savingsNegativeIndicator
+                ]} />
+                <View>
+                  <Text style={styles.metricLabel}>Savings</Text>
+                  <Text style={[styles.metricValue, netSavings >= 0 ? styles.incomeValue : styles.expenseValue]}>
+                    {netSavings >= 0 ? '+' : '-'}{formatCurrency(Math.abs(netSavings))}
+                  </Text>
+                </View>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -494,28 +517,86 @@ const ReportsScreen = observer(() => {
         {spendingByCategory.length > 0 ? (
           <View style={[styles.chartContainer, styles.cardShadow]}>
             <Text style={styles.chartTitle}>Spending by Category</Text>
-            <View style={styles.pieChartContainer}>
-              <PieChart
-                data={spendingByCategory.map(category => ({
-                  ...category,
-                  // Make text smaller on small screens
-                  legendFontSize: width < 360 ? 10 : 12
-                }))}
-                width={CHART_WIDTH}
-                height={CHART_HEIGHT}
-                chartConfig={{
-                  backgroundColor: theme.colors.white,
-                  backgroundGradientFrom: theme.colors.white,
-                  backgroundGradientTo: theme.colors.white,
-                  color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                }}
-                accessor="amount"
-                backgroundColor="transparent"
-                paddingLeft="0"
-                absolute
-                center={[CHART_WIDTH/2 - 140, 0]}
-                hasLegend={true}
-              />
+            
+            <View style={styles.chartContent}>
+              {/* Simple pie chart with fixed position */}
+              <View style={styles.chartVisual}>
+                <View style={styles.pieWrapper}>
+                  <PieChart
+                    data={spendingByCategory.map(category => ({
+                      ...category,
+                      legendFontSize: 0, // No legend on chart
+                    }))}
+                    width={180}
+                    height={180}
+                    chartConfig={{
+                      backgroundColor: '#ffffff',
+                      backgroundGradientFrom: '#ffffff',
+                      backgroundGradientTo: '#ffffff',
+                      color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                    }}
+                    accessor="amount"
+                    backgroundColor="transparent"
+                    paddingLeft="32"
+                    absolute
+                    hasLegend={false}
+                  />
+                </View>
+              </View>
+              
+              {/* Custom legend */}
+              <View style={styles.chartLegendContainer}>
+                <ScrollView 
+                  style={styles.legendScroll}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {spendingByCategory.map((category, index) => {
+                    // Calculate percentage
+                    const totalSpending = spendingByCategory.reduce(
+                      (sum, cat) => sum + cat.amount, 0
+                    );
+                    const percentage = 
+                      totalSpending > 0 
+                        ? ((category.amount / totalSpending) * 100).toFixed(1) 
+                        : '0';
+                    
+                    return (
+                      <View key={index} style={styles.legendItem}>
+                        <View style={styles.legendRow}>
+                          <View 
+                            style={[
+                              styles.legendColorBox, 
+                              { backgroundColor: category.color }
+                            ]} 
+                          />
+                          <Text style={styles.legendCategoryText} numberOfLines={1}>
+                            {category.name}
+                          </Text>
+                          <Text style={styles.legendPercentage}>
+                            {percentage}%
+                          </Text>
+                        </View>
+                        
+                        <View style={styles.legendBarContainer}>
+                          <View 
+                            style={[
+                              styles.legendBar,
+                              { 
+                                width: `${Math.min(parseFloat(percentage), 100)}%`,
+                                backgroundColor: category.color
+                              }
+                            ]} 
+                          />
+                        </View>
+                        
+                        <Text style={styles.legendAmountText}>
+                          {formatCurrency(category.amount)}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
             </View>
           </View>
         ) : (
@@ -584,88 +665,107 @@ const ReportsScreen = observer(() => {
           <Text style={styles.sectionTitle}>Budget Utilization</Text>
           
           {budgets.length > 0 ? (
-            budgets.map((budget, index) => {
-              const spent = budget.currentSpending || 0;
-              const allocated = budget.amount || 0;
-              const percentage = allocated > 0 ? (spent / allocated) * 100 : 0;
-              const isOverBudget = percentage > 100;
-              const isNearBudget = percentage > 80 && percentage <= 100;
-              const budgetStatus = isOverBudget ? 'exceeded' : isNearBudget ? 'warning' : 'safe';
+            (() => {
+              // Sort and categorize budgets
+              const sortedBudgets = [...budgets].sort((a, b) => {
+                // First sort by status (over budget first, then warning, then safe)
+                const percentA = a.currentSpending && a.amount ? (a.currentSpending / a.amount) * 100 : 0;
+                const percentB = b.currentSpending && b.amount ? (b.currentSpending / b.amount) * 100 : 0;
+                
+                const statusA = percentA > 100 ? 2 : percentA >= 80 ? 1 : 0;
+                const statusB = percentB > 100 ? 2 : percentB >= 80 ? 1 : 0;
+                
+                // If status is different, sort by status
+                if (statusA !== statusB) {
+                  return statusB - statusA; 
+                }
+                
+                // If same status, sort by percentage (highest first)
+                return percentB - percentA;
+              });
               
-              return (
-                <TouchableOpacity
-                  key={budget._id || index}
-                  style={styles.budgetItem}
-                  onPress={() => handleCategoryPress(budget.category)}
-                >
-                  <View style={styles.budgetHeader}>
-                    <View style={[
-                      styles.categoryDot, 
-                      { backgroundColor: categoryColors[budget.category as keyof typeof categoryColors] || '#607D8B' }
-                    ]} />
-                    <Text style={styles.categoryName}>{budget.category}</Text>
-                    <Text style={styles.budgetAmount}>{formatCurrency(spent)}</Text>
-                  </View>
-                  <View style={styles.progressBarContainer}>
-                    <View 
-                      style={[
-                        styles.progressBar,
-                        { 
-                          width: `${Math.min(percentage, 100)}%`,
-                          backgroundColor: isOverBudget 
-                            ? theme.colors.error 
-                            : isNearBudget 
-                              ? theme.colors.warning 
-                              : theme.colors.success
-                        }
-                      ]} 
-                    />
-                  </View>
-                  
-                  {selectedCategory === budget.category && (
-                    <View style={styles.budgetDetails}>
-                      <View style={styles.budgetDetailRow}>
-                        <Text style={styles.budgetDetailLabel}>Allocated:</Text>
-                        <Text style={styles.budgetDetailValue}>{formatCurrency(allocated)}</Text>
-                      </View>
-                      <View style={styles.budgetDetailRow}>
-                        <Text style={styles.budgetDetailLabel}>Spent:</Text>
-                        <Text style={[
-                          styles.budgetDetailValue,
-                          isOverBudget && styles.redText
-                        ]}>{formatCurrency(spent)}</Text>
-                      </View>
-                      <View style={styles.budgetDetailRow}>
-                        <Text style={styles.budgetDetailLabel}>Remaining:</Text>
-                        <Text style={[
-                          styles.budgetDetailValue,
-                          isOverBudget ? styles.redText : styles.greenText
-                        ]}>{formatCurrency(allocated - spent)}</Text>
-                      </View>
-                      <View style={styles.budgetDetailRow}>
-                        <Text style={styles.budgetDetailLabel}>Utilization:</Text>
-                        <Text style={[
-                          styles.budgetDetailValue,
-                          isOverBudget ? styles.redText : isNearBudget ? styles.yellowText : styles.greenText
-                        ]}>{percentage.toFixed(1)}%</Text>
-                      </View>
-                      {isOverBudget && (
-                        <View style={styles.budgetStatusTag}>
-                          <Ionicons name="alert-circle" size={14} color="#fff" />
-                          <Text style={styles.budgetStatusText}>Over Budget</Text>
-                        </View>
-                      )}
-                      {isNearBudget && (
-                        <View style={[styles.budgetStatusTag, styles.warningTag]}>
-                          <Ionicons name="warning" size={14} color="#fff" />
-                          <Text style={styles.budgetStatusText}>Near Limit</Text>
-                        </View>
-                      )}
+              return sortedBudgets.map((budget, index) => {
+                const spent = budget.currentSpending || 0;
+                const allocated = budget.amount || 0;
+                const percentage = allocated > 0 ? (spent / allocated) * 100 : 0;
+                const isOverBudget = percentage > 100;
+                const isNearBudget = percentage >= 80 && percentage <= 100;
+                
+                return (
+                  <TouchableOpacity
+                    key={budget._id || index}
+                    style={styles.budgetItem}
+                    onPress={() => handleCategoryPress(budget.category)}
+                  >
+                    <View style={styles.budgetHeader}>
+                      <View style={[
+                        styles.categoryDot, 
+                        { backgroundColor: categoryColors[budget.category as keyof typeof categoryColors] || '#607D8B' }
+                      ]} />
+                      <Text style={styles.categoryName}>{budget.category}</Text>
+                      <Text style={styles.budgetAmount}>{formatCurrency(spent)}</Text>
                     </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })
+                    <View style={styles.progressBarContainer}>
+                      <View 
+                        style={[
+                          styles.progressBar,
+                          { 
+                            width: `${Math.min(percentage, 100)}%`,
+                            backgroundColor: isOverBudget 
+                              ? theme.colors.error 
+                              : isNearBudget 
+                                ? theme.colors.warning 
+                                : theme.colors.success
+                          }
+                        ]} 
+                      />
+                    </View>
+                    
+                    {selectedCategory === budget.category && (
+                      <View style={styles.budgetDetails}>
+                        <View style={styles.budgetDetailRow}>
+                          <Text style={styles.budgetDetailLabel}>Allocated:</Text>
+                          <Text style={styles.budgetDetailValue}>{formatCurrency(allocated)}</Text>
+                        </View>
+                        <View style={styles.budgetDetailRow}>
+                          <Text style={styles.budgetDetailLabel}>Spent:</Text>
+                          <Text style={[
+                            styles.budgetDetailValue,
+                            isOverBudget && styles.redText
+                          ]}>{formatCurrency(spent)}</Text>
+                        </View>
+                        <View style={styles.budgetDetailRow}>
+                          <Text style={styles.budgetDetailLabel}>Remaining:</Text>
+                          <Text style={[
+                            styles.budgetDetailValue,
+                            isOverBudget ? styles.redText : styles.greenText
+                          ]}>{formatCurrency(allocated - spent)}</Text>
+                        </View>
+                        <View style={styles.budgetDetailRow}>
+                          <Text style={styles.budgetDetailLabel}>Utilization:</Text>
+                          <Text style={[
+                            styles.budgetDetailValue,
+                            isOverBudget ? styles.redText : isNearBudget ? styles.yellowText : styles.greenText
+                          ]}>{percentage.toFixed(1)}%</Text>
+                        </View>
+                        {isOverBudget && (
+                          <View style={styles.budgetStatusTag}>
+                            <Ionicons name="alert-circle" size={14} color="#fff" />
+                            <Text style={styles.budgetStatusText}>Over Budget</Text>
+                          </View>
+                        )}
+                        {isNearBudget && (
+                          <View style={[styles.budgetStatusTag, styles.warningTag]}>
+                            <Ionicons name="warning" size={14} color="#fff" />
+                            <Text style={styles.budgetStatusText}>Near Limit</Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              });
+            })()
           ) : (
             <View style={styles.noBudgetContainer}>
               <Text style={styles.noBudgetText}>No budgets created yet</Text>
@@ -677,7 +777,7 @@ const ReportsScreen = observer(() => {
               </TouchableOpacity>
             </View>
           )}
-      </View>
+        </View>
       </ScrollView>
       
       <BottomNavBar activeScreen={activeScreen} onPress={handleNavigation} />
@@ -744,17 +844,56 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   metricsContainer: {
-    flexDirection: 'row',
     paddingHorizontal: 16,
     marginBottom: 16,
   },
-  metricCard: {
-    flex: 1,
+  metricsCard: {
     backgroundColor: theme.colors.white,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 12,
-    marginHorizontal: 4,
+  },
+  metricRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  metricItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  metricIndicator: {
+    width: 8,
+    height: 32,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  incomeIndicator: {
+    backgroundColor: theme.colors.success,
+  },
+  expenseIndicator: {
+    backgroundColor: theme.colors.error,
+  },
+  savingsPositiveIndicator: {
+    backgroundColor: theme.colors.primary,
+  },
+  savingsNegativeIndicator: {
+    backgroundColor: theme.colors.error,
+  },
+  metricDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: theme.colors.lightGray,
+    marginHorizontal: 8,
+  },
+  metricLabel: {
+    fontSize: 12,
+    color: theme.colors.textLight,
+    marginBottom: 2,
+  },
+  metricValue: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   cardShadow: {
     ...Platform.select({
@@ -768,15 +907,6 @@ const styles = StyleSheet.create({
         elevation: 2,
       },
     }),
-  },
-  metricLabel: {
-    fontSize: 12,
-    color: theme.colors.textLight,
-    marginBottom: 4,
-  },
-  metricValue: {
-    fontSize: 16,
-    fontWeight: '600',
   },
   incomeValue: {
     color: theme.colors.success,
@@ -908,12 +1038,69 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginLeft: 4,
   },
-  pieChartContainer: {
+  chartContent: {
+    flexDirection: width > 480 ? 'row' : 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
+  },
+  chartVisual: {
+    width: width > 480 ? '50%' : '100%',
+    alignItems: 'center',
+    marginBottom: width > 480 ? 0 : 16,
+  },
+  pieWrapper: {
+    width: 180,
+    height: 180,
+    marginLeft: 50, // Shift the chart to the right
+  },
+  chartLegendContainer: {
+    width: width > 480 ? '50%' : '100%',
+    paddingLeft: width > 480 ? 16 : 0,
+  },
+  legendScroll: {
+    maxHeight: 180,
+  },
+  legendItem: {
+    marginBottom: 12,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  legendColorBox: {
+    width: 12,
+    height: 12,
+    borderRadius: 3,
+    marginRight: 8,
+  },
+  legendCategoryText: {
+    fontSize: 13,
+    color: theme.colors.text,
+    flex: 1,
+  },
+  legendPercentage: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.text,
+    width: 45,
+    textAlign: 'right',
+  },
+  legendBarContainer: {
+    height: 4,
+    backgroundColor: theme.colors.lightGray,
+    borderRadius: 2,
     overflow: 'hidden',
-    marginBottom: 10,
+    marginBottom: 4,
+  },
+  legendBar: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  legendAmountText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: theme.colors.textLight,
+    textAlign: 'right',
   },
   lineChartContainer: {
     alignItems: 'center',
@@ -925,11 +1112,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: 8,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 10,
   },
   legendDot: {
     width: 8,

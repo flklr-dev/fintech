@@ -72,23 +72,59 @@ const HomeScreen = observer(() => {
   }, []);
 
   const checkAuthentication = async () => {
-    if (!authViewModel.isLoggedIn) {
-      const token = await authService.getToken();
-      if (token) {
-        // If token exists but isLoggedIn is false, update the state
-        runInAction(() => {
-          authViewModel.isLoggedIn = true;
-        });
-      } else {
-        // Only show dialog if no token is found
+    try {
+      // Check if user is logged in with a valid session
+      const isUserLoggedIn = await authService.isLoggedIn();
+      
+      if (!isUserLoggedIn) {
+        // If session is invalid or expired, show dialog and handle logout properly
         showDialog({
           type: 'error',
           title: 'Session Expired',
           message: 'Your session has expired. Please login again.',
           actionText: 'Login',
-          onAction: () => navigation.navigate('Login')
+          onAction: async () => {
+            // Perform proper logout first to clear any remaining token data
+            await authService.clearToken();
+            
+            // Reset auth state in viewModel
+            runInAction(() => {
+              authViewModel.isLoggedIn = false;
+              authViewModel.userId = null;
+              authViewModel.userName = null;
+              authViewModel.email = null;
+            });
+            
+            // Navigate to login screen
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' }],
+            });
+          }
         });
+      } else if (!authViewModel.isLoggedIn) {
+        // If token exists but authViewModel state is wrong, update the state
+        // without showing any dialog (silent update)
+        runInAction(() => {
+          authViewModel.isLoggedIn = true;
+        });
+        
+        // Try to load user data in the background
+        try {
+          const userData = await authService.getStoredUserData();
+          if (userData) {
+            runInAction(() => {
+              authViewModel.userId = userData.id;
+              authViewModel.userName = userData.name;
+              authViewModel.email = userData.email;
+            });
+          }
+        } catch (err) {
+          console.error('Error loading stored user data:', err);
+        }
       }
+    } catch (error) {
+      console.error('Authentication check error:', error);
     }
   };
 
@@ -255,8 +291,30 @@ const HomeScreen = observer(() => {
   };
 
   const handleLogout = async () => {
-    await authViewModel.logout();
-    navigation.navigate('Login');
+    try {
+      setLoading(true);
+      
+      // First perform the logout action through the viewModel
+      await authViewModel.logout();
+      
+      // Then navigate using reset to clear the navigation stack
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+      
+      // Show error dialog if logout fails
+      showDialog({
+        type: 'error',
+        title: 'Logout Error',
+        message: 'Failed to log out. Please try again.',
+        actionText: 'OK'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddTransaction = () => {

@@ -1,5 +1,6 @@
 const Budget = require('../models/Budget');
 const { catchAsync } = require('../utils/catchAsync');
+const Transaction = require('../models/Transaction');
 
 exports.createBudget = catchAsync(async (req, res) => {
   const {
@@ -57,18 +58,31 @@ exports.getBudgets = catchAsync(async (req, res) => {
     query.period = period;
   }
 
-  console.log('Budget query:', query);
   const budgets = await Budget.find(query);
 
-  // Calculate current spending for each budget
+  // For each budget, calculate spending-related properties
   const budgetsWithSpending = await Promise.all(budgets.map(async (budget) => {
-    const spending = await budget.getCurrentSpending();
+    // Get transactions in budget's date range and category
+    const transactions = await Transaction.find({
+      user: req.user._id,
+      type: 'expense',
+      category: budget.category,
+      date: {
+        $gte: new Date(budget.startDate),
+        $lte: new Date(budget.endDate)
+      }
+    });
+    
+    // Calculate current spending
+    const spending = transactions.reduce((total, tx) => total + tx.amount, 0);
+    
+    // Convert budget to object and add calculated properties
     const budgetObj = budget.toObject();
     return {
       ...budgetObj,
       currentSpending: spending,
-      remainingAmount: budget.getRemainingBudget(spending),
-      utilizationPercentage: budget.getUtilizationPercentage(spending)
+      remainingAmount: budget.amount - spending,
+      utilizationPercentage: (spending / budget.amount) * 100
     };
   }));
 
