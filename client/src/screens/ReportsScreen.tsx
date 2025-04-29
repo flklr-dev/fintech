@@ -26,20 +26,11 @@ import api from '../api/api';
 import { budgetService } from '../services/budgetService';
 import { useFocusEffect } from '@react-navigation/native';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 const { width } = Dimensions.get('window');
 const CHART_WIDTH = width - 48;
 const CHART_HEIGHT = Math.min(220, width * 0.6);
-
-// Format currency helper
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'PHP',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount);
-};
 
 const ReportsScreen = observer(() => {
   const navigation = useNavigation();
@@ -71,6 +62,8 @@ const ReportsScreen = observer(() => {
     'Education': '#009688',
     'Other': '#607D8B'
   };
+
+  const { formatCurrency } = useCurrency(); // Use the currency context
 
   // Use useFocusEffect to refresh data when the screen comes into focus
   useFocusEffect(
@@ -337,8 +330,6 @@ const ReportsScreen = observer(() => {
       navigation.navigate('Budget' as any);
     } else if (screen === 'Transactions') {
       navigation.navigate('Transactions' as any);
-    } else if (screen === 'Goals') {
-      navigation.navigate('Goals' as any);
     }
   };
 
@@ -383,7 +374,6 @@ const ReportsScreen = observer(() => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <AppHeader showNotifications={true} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>Loading financial insights...</Text>
@@ -400,7 +390,6 @@ const ReportsScreen = observer(() => {
       <SafeAreaView style={styles.container}>
         <AppHeader 
           showBackButton={false}
-          showNotifications={true}
         />
         
         <View style={styles.headerContainer}>

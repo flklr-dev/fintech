@@ -27,16 +27,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { useFocusEffect } from '@react-navigation/native';
 import MessageDialog from '../components/MessageDialog';
-
-// Currency formatter
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(amount);
-};
+import { useCurrency } from '../contexts/CurrencyContext';
 
 // Valid budget categories matching the server's enum
 const BUDGET_CATEGORIES = [
@@ -112,6 +103,9 @@ const BudgetScreen = observer(() => {
   // Set minimum allowed dates
   const today = new Date();
   today.setHours(0, 0, 0, 0); // Set to beginning of day
+  
+  // Currency context at the top level where hooks should be called
+  const { formatCurrency, currency } = useCurrency();
   
   // Get minimum date for end date picker (must be after start date and not before today)
   const getMinEndDate = () => {
@@ -250,8 +244,6 @@ const BudgetScreen = observer(() => {
       navigation.navigate('Home' as any);
     } else if (screen === 'Transactions') {
       navigation.navigate('Transactions' as any);
-    } else if (screen === 'Goals') {
-      navigation.navigate('Goals' as any);
     } else if (screen === 'Reports') {
       navigation.navigate('Reports' as any);
     }
@@ -439,7 +431,7 @@ const BudgetScreen = observer(() => {
   // Handle opening the options menu for a budget
   const handleOpenOptions = (budget: Budget, event: any) => {
     // Measure the position of the touchable that was pressed
-    event.target.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
+    event.target.measure((x: number, y: number, w: number, height: number, pageX: number, pageY: number) => {
       // Position the menu to the left of the button, slightly below it
       setMenuPosition({ 
         x: pageX - 150, // Position left of the button with width of 150
@@ -652,7 +644,7 @@ const BudgetScreen = observer(() => {
             styles.percentageText, 
             isOverBudget ? styles.redText : isNearLimit ? styles.warningText : {}
           ]}>
-            {percentage.toFixed(1)}%
+            {percentage === 100 ? '100%' : `${percentage.toFixed(1)}%`}
           </Text>
         </View>
         
@@ -794,7 +786,7 @@ const BudgetScreen = observer(() => {
             
             <Text style={styles.inputLabel}>Budget Amount</Text>
             <View style={styles.currencyInputContainer}>
-              <Text style={styles.currencySymbol}>₱</Text>
+              <Text style={styles.currencySymbol}>{currency.symbol}</Text>
               <TextInput
                 style={styles.currencyInput}
                 placeholder="0.00"
@@ -931,7 +923,7 @@ const BudgetScreen = observer(() => {
           <ScrollView style={styles.modalContent}>
             <Text style={styles.inputLabel}>Budget Amount</Text>
             <View style={styles.currencyInputContainer}>
-              <Text style={styles.currencySymbol}>₱</Text>
+              <Text style={styles.currencySymbol}>{currency.symbol}</Text>
               <TextInput
                 style={styles.currencyInput}
                 placeholder="0.00"
@@ -1055,29 +1047,29 @@ const BudgetScreen = observer(() => {
       {/* Summary card */}
       {budgets && budgets.length > 0 && (
         <View style={[styles.summaryCard, styles.cardShadow]}>
-        <Text style={styles.summaryTitle}>Budget Summary</Text>
-        <View style={styles.summaryContent}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Total Budget</Text>
-            <Text style={styles.summaryAmount}>${totalAllocated.toFixed(2)}</Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Total Spent</Text>
-            <Text style={styles.summaryAmount}>${totalSpent.toFixed(2)}</Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Remaining</Text>
-            <Text style={[
-              styles.summaryAmount, 
-              totalRemaining < 0 ? styles.redText : styles.greenText
-            ]}>
-              ${totalRemaining.toFixed(2)}
-            </Text>
+          <Text style={styles.summaryTitle}>Budget Summary</Text>
+          <View style={styles.summaryContent}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Total Budget</Text>
+              <Text style={styles.summaryAmount}>{formatCurrency(totalAllocated)}</Text>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Total Spent</Text>
+              <Text style={styles.summaryAmount}>{formatCurrency(totalSpent)}</Text>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryLabel}>Remaining</Text>
+              <Text style={[
+                styles.summaryAmount, 
+                totalRemaining < 0 ? styles.redText : styles.greenText
+              ]}>
+                {formatCurrency(totalRemaining)}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
       )}
       
       {/* Budget listing */}

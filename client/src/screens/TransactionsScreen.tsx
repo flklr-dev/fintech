@@ -33,6 +33,7 @@ import api from '../api/api';
 import transactionService from '../services/transactionService';
 import { budgetService, Budget as BudgetType } from '../services/budgetService';
 import MessageDialog from '../components/MessageDialog';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 // Interface for transaction
 interface Transaction {
@@ -164,6 +165,7 @@ const TransactionsScreen = observer(() => {
   const [lastTransactionType, setLastTransactionType] = useState<'income' | 'expense'>('expense');
   const [showSuccessFeedback, setShowSuccessFeedback] = useState(false);
   const successOpacity = useState(new Animated.Value(0))[0];
+  const { formatCurrency, currency } = useCurrency();
   
   // Demo transactions data
   const [transactions, setTransactions] = useState<Transaction[]>([
@@ -457,8 +459,6 @@ const TransactionsScreen = observer(() => {
       navigation.navigate('Home' as any);
     } else if (screen === 'Budget') {
       navigation.navigate('Budget' as any);
-    } else if (screen === 'Goals') {
-      navigation.navigate('Goals' as any);
     } else if (screen === 'Reports') {
       navigation.navigate('Reports' as any);
     }
@@ -1074,7 +1074,7 @@ const TransactionsScreen = observer(() => {
             styles.transactionAmount,
             isExpense ? styles.expenseAmount : styles.incomeAmount
           ]}>
-            {isExpense ? '-' : '+'}${Math.abs(item.amount).toFixed(2)}
+            {isExpense ? '-' : '+'}{formatCurrency(Math.abs(item.amount))}
           </Text>
           
           <View style={styles.titleAndOptions}>
@@ -1235,7 +1235,7 @@ const TransactionsScreen = observer(() => {
                 styles.currencyInputContainer,
                 formErrors.amount ? styles.inputError : null
               ]}>
-                <Text style={styles.currencySymbol}>₱</Text>
+                <Text style={styles.currencySymbol}>{currency.symbol}</Text>
                 <TextInput
                   style={styles.currencyInput}
                   placeholder="0.00"
@@ -1291,14 +1291,14 @@ const TransactionsScreen = observer(() => {
                   <Text style={styles.budgetStatusLabel}>Budget Status:</Text>
                   <View style={styles.budgetStatusDetails}>
                     <Text style={styles.budgetStatusText}>
-                      Allocated: ${activeBudgetsByCategory[newTransaction.category].amount.toFixed(2)}
+                      Allocated: {formatCurrency(activeBudgetsByCategory[newTransaction.category].amount)}
                     </Text>
                     <Text style={styles.budgetStatusText}>
-                      Spent: ${(activeBudgetsByCategory[newTransaction.category].currentSpending || 0).toFixed(2)}
+                      Spent: {formatCurrency(activeBudgetsByCategory[newTransaction.category].currentSpending || 0)}
                     </Text>
                     <Text style={styles.budgetStatusText}>
-                      Remaining: ${((activeBudgetsByCategory[newTransaction.category].amount) - 
-                                    (activeBudgetsByCategory[newTransaction.category].currentSpending || 0)).toFixed(2)}
+                      Remaining: {formatCurrency((activeBudgetsByCategory[newTransaction.category].amount) - 
+                                    (activeBudgetsByCategory[newTransaction.category].currentSpending || 0))}
                     </Text>
                   </View>
                 </View>
@@ -1511,7 +1511,7 @@ const TransactionsScreen = observer(() => {
                 styles.currencyInputContainer,
                 formErrors.amount ? styles.inputError : null
               ]}>
-                <Text style={styles.currencySymbol}>₱</Text>
+                <Text style={styles.currencySymbol}>{currency.symbol}</Text>
                 <TextInput
                   style={styles.currencyInput}
                   placeholder="0.00"
@@ -1576,14 +1576,14 @@ const TransactionsScreen = observer(() => {
                   <Text style={styles.budgetStatusLabel}>Budget Status:</Text>
                   <View style={styles.budgetStatusDetails}>
                     <Text style={styles.budgetStatusText}>
-                      Allocated: ${activeBudgetsByCategory[editedTransaction.category].amount.toFixed(2)}
+                      Allocated: {formatCurrency(activeBudgetsByCategory[editedTransaction.category].amount)}
                     </Text>
                     <Text style={styles.budgetStatusText}>
-                      Spent: ${(activeBudgetsByCategory[editedTransaction.category].currentSpending || 0).toFixed(2)}
+                      Spent: {formatCurrency(activeBudgetsByCategory[editedTransaction.category].currentSpending || 0)}
                     </Text>
                     <Text style={styles.budgetStatusText}>
-                      Remaining: ${((activeBudgetsByCategory[editedTransaction.category].amount) - 
-                                    (activeBudgetsByCategory[editedTransaction.category].currentSpending || 0)).toFixed(2)}
+                      Remaining: {formatCurrency((activeBudgetsByCategory[editedTransaction.category].amount) - 
+                                    (activeBudgetsByCategory[editedTransaction.category].currentSpending || 0))}
                     </Text>
                   </View>
                 </View>
@@ -1669,7 +1669,6 @@ const TransactionsScreen = observer(() => {
   return (
     <SafeAreaView style={styles.container}>
       <AppHeader 
-        rightIcon="add-outline" 
         onRightIconPress={() => setShowAddModal(true)}
         showProfile={true}
         onProfilePress={handleProfilePress}

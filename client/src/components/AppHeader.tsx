@@ -14,6 +14,7 @@ interface AppHeaderProps {
   onRightIconPress?: () => void;
   showProfile?: boolean;
   onProfilePress?: () => void;
+  headerTitle?: string;
 }
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -25,6 +26,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   onRightIconPress,
   showProfile = true,
   onProfilePress,
+  headerTitle,
 }) => {
   const { user } = useAuth();
   const navigation = useNavigation<NavigationProp>();
@@ -38,8 +40,16 @@ const AppHeader: React.FC<AppHeaderProps> = ({
     }
   };
 
-  // Only show profile icon if not on Account screen
+  // Only show profile icon if not on Account screen and showProfile is true
   const showProfileIcon = showProfile && route.name !== 'Account';
+
+  const handleBackPress = () => {
+    if (onBackPress) {
+      onBackPress();
+    } else {
+      navigation.goBack();
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -51,7 +61,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
       <View style={styles.headerContent}>
         <View style={styles.leftContainer}>
           {showBackButton ? (
-            <TouchableOpacity style={styles.iconButton} onPress={onBackPress}>
+            <TouchableOpacity style={styles.iconButton} onPress={handleBackPress}>
               <Ionicons name="arrow-back" size={22} color={theme.colors.white} />
             </TouchableOpacity>
           ) : (
@@ -59,6 +69,10 @@ const AppHeader: React.FC<AppHeaderProps> = ({
               <Text style={styles.logoText}>Fintech</Text>
               <View style={styles.dotAccent}></View>
             </View>
+          )}
+          
+          {headerTitle && (
+            <Text style={styles.headerTitle}>{headerTitle}</Text>
           )}
         </View>
 
@@ -127,6 +141,12 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: theme.colors.accent,
     marginLeft: 4,
+  },
+  headerTitle: {
+    color: theme.colors.white,
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 16,
   },
   rightContainer: {
     flexDirection: 'row',

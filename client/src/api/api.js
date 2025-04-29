@@ -1,6 +1,6 @@
 import axios from 'axios';
 // import { API_URL } from '@env';
-import { getSecurely } from '../utils/secureStorage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Create a base axios instance with baseURL
 const api = axios.create({
@@ -8,31 +8,23 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 seconds timeout
+  timeout: 5000, // 5 seconds timeout
 });
 
 // Add a request interceptor to include auth token
 api.interceptors.request.use(
   async (config) => {
-    try {
-      // Get the token from secure storage
-      const authData = await getSecurely('auth_token');
-      
-      // If token exists, add to headers
-      if (authData && authData.token) {
-        config.headers.Authorization = `Bearer ${authData.token}`;
-        console.log('Adding auth token to request');
-      } else {
-        console.log('No auth token found for request');
-      }
-      
-      console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
-      
-      return config;
-    } catch (error) {
-      console.error('Error in request interceptor:', error);
-      return config;
+    // Try to get token from AsyncStorage
+    const token = await AsyncStorage.getItem('auth_token');
+    
+    // If token exists, add it to the request headers
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    
+    return config;
   },
   (error) => {
     console.error('Request interceptor error:', error);
@@ -46,7 +38,21 @@ api.interceptors.response.use(
     console.log(`API Response [${response.status}]: ${response.config.method?.toUpperCase()} ${response.config.url}`);
     return response;
   },
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+    
+    // If 401 response and not already retrying, attempt to refresh token or log out
+    if (error.response && error.response.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      
+      // Clear token as it's invalid
+      await AsyncStorage.removeItem('auth_token');
+      
+      // You could implement token refresh logic here if your API supports it
+      
+      // Return to login screen (handled by the auth state in AuthContext)
+    }
+    
     // Handle specific error cases
     if (error.response) {
       // Server responded with an error status
@@ -76,5 +82,22 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Helper methods for token management
+const setAuthToken = (token) => {
+  if (token) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  } else {
+    delete api.defaults.headers.common['Authorization'];
+  }
+};
+
+const clearAuthToken = () => {
+  delete api.defaults.headers.common['Authorization'];
+};
+
+// Attach token management methods to the api object
+api.setAuthToken = setAuthToken;
+api.clearAuthToken = clearAuthToken;
 
 export default api; 

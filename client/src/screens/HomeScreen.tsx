@@ -25,25 +25,17 @@ import { ScreenName } from '../components/BottomNavBar';
 import api from '../api/api';
 import { format } from 'date-fns';
 import { budgetService } from '../services/budgetService';
+import { useCurrency } from '../contexts/CurrencyContext';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48) / 2;
-
-// Helper to format currency
-const formatCurrency = (amount: number) => {
-  return amount?.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'PHP',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }) || '₱0.00';
-};
 
 const HomeScreen = observer(() => {
   const navigation = useNavigation();
   const [activeScreen, setActiveScreen] = useState<ScreenName>('Home');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const { formatCurrency } = useCurrency();
   
   // Data states
   const [totalBalance, setTotalBalance] = useState(0);
@@ -283,8 +275,6 @@ const HomeScreen = observer(() => {
       navigation.navigate('Budget' as any);
     } else if (screen === 'Transactions') {
       navigation.navigate('Transactions' as any);
-    } else if (screen === 'Goals') {
-      navigation.navigate('Goals' as any);
     } else if (screen === 'Reports') {
       navigation.navigate('Reports' as any);
     }
@@ -428,7 +418,6 @@ const HomeScreen = observer(() => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <AppHeader showNotifications={true} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>Loading your financial data...</Text>
@@ -439,9 +428,7 @@ const HomeScreen = observer(() => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <AppHeader 
-        showNotifications={true}
-        onNotificationsPress={() => console.log('Notifications pressed')} 
+      <AppHeader
         showProfile={true}
         onProfilePress={handleProfilePress}
       />

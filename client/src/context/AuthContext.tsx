@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authService, LoginRequest, RegisterRequest, apiService } from '../services/apiService';
+import { authService, LoginRequest, RegisterRequest } from '../services/apiService';
+import api from '../api/api';
 
 // Define user type
 type User = {
@@ -69,7 +70,7 @@ export const useAuth = () => useContext(AuthContext);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Auth state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Start loading by default
   const [error, setError] = useState<string | null>(null);
   
   // User data
@@ -88,38 +89,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const checkAuthState = async () => {
       try {
-        setIsLoading(true);
+        console.log('Checking auth state on app launch...');
         
-        // Check if user is logged in with a valid (non-expired) token
+        // Check if user is logged in
         const isUserLoggedIn = await authService.isLoggedIn();
         
-        if (isUserLoggedIn) {
-          // Try to get stored user data first for faster loading
-          const storedUserData = await authService.getStoredUserData();
-          
-          if (storedUserData) {
-            setUser(storedUserData);
+        if (!isUserLoggedIn) {
+          console.log('No valid token found, user is not logged in');
+          setIsLoggedIn(false);
+          setUser(null);
+          setIsLoading(false);
+          return;
+        }
+        
+        console.log('Valid token found, loading user data...');
+        
+        // Try to get stored user data for immediate UI update
+        const storedUserData = await authService.getStoredUserData();
+        if (storedUserData) {
+          console.log('Found stored user data:', storedUserData.name);
+          setUser(storedUserData);
+          setIsLoggedIn(true);
+        }
+        
+        // Try to fetch latest user data
+        try {
+          // Get token to apply to our api instance
+          const token = await authService.getToken();
+          if (token) {
+            api.setAuthToken(token);
           }
           
-          // Fetch latest user profile in the background
-          try {
-            const userProfile = await apiService.getCurrentUser();
-            setUser(userProfile);
+          // Fetch user profile
+          const response = await api.get('/users/profile');
+          if (response.data && response.data.data && response.data.data.user) {
+            const userData = response.data.data.user;
+            console.log('Successfully fetched user profile:', userData.name);
             
-            // Update stored user data with latest
-            await AsyncStorage.setItem('user_data', JSON.stringify(userProfile));
-          } catch (profileError) {
-            console.error('Error fetching current user profile:', profileError);
-            // If we can't fetch the profile but have a valid token,
-            // we'll still consider the user logged in with cached data
+            // Update user state and storage
+            setUser(userData);
+            await AsyncStorage.setItem('user_data', JSON.stringify(userData));
           }
           
           setIsLoggedIn(true);
-        } else {
-          // Clear any auth state if token is invalid or expired
-          await authService.clearToken();
-          setIsLoggedIn(false);
-          setUser(null);
+        } catch (profileError) {
+          console.error('Error fetching user profile:', profileError);
+          // If we can't fetch profile but have valid token and cached data,
+          // we'll still consider the user logged in with cached data
+          if (!storedUserData) {
+            // If we have no stored data and can't fetch profile, log out
+            await authService.clearToken();
+            setIsLoggedIn(false);
+            setUser(null);
+          }
         }
       } catch (error) {
         console.error('Failed to check auth state:', error);
@@ -215,25 +237,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Please correct the form errors');
       }
       
-      // Attempt login
-      const token = await authService.login(data);
+      // Attempt login - this will automatically store the token
+      await authService.login(data);
       
-      // Get stored user data (should have been saved during login)
-      const storedUserData = await authService.getStoredUserData();
+      // Get token to set in api instance
+      const token = await authService.getToken();
+      if (token) {
+        api.setAuthToken(token);
+      }
       
-      if (storedUserData) {
-        setUser(storedUserData);
-      } else {
-        // Fetch user profile if not available in stored data
-        const userProfile = await apiService.getCurrentUser();
-        setUser(userProfile);
-        
-        // Store user data for future use
-        await AsyncStorage.setItem('user_data', JSON.stringify(userProfile));
+      // Get user data (should have been saved by authService)
+      const userData = await authService.getStoredUserData();
+      if (userData) {
+        setUser(userData);
       }
       
       setIsLoggedIn(true);
-      
       return true;
     } catch (error: any) {
       // Handle specific API errors
@@ -266,30 +285,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Please correct the form errors');
       }
       
-      // Attempt registration
+      // Attempt registration - this will automatically store the token
       await authService.register(data);
       
-      // Get stored user data (should have been saved during registration)
-      const storedUserData = await authService.getStoredUserData();
-      
-      if (storedUserData) {
-        setUser(storedUserData);
-        setIsLoggedIn(true);
-      } else {
-        // Fetch user profile if not available in stored data
-        try {
-          const userProfile = await apiService.getCurrentUser();
-          setUser(userProfile);
-          setIsLoggedIn(true);
-          
-          // Store user data for future use
-          await AsyncStorage.setItem('user_data', JSON.stringify(userProfile));
-        } catch (profileError) {
-          console.error('Error fetching user profile after registration:', profileError);
-          throw new Error('Registration successful but failed to get user profile');
-        }
+      // Get token to set in api instance
+      const token = await authService.getToken();
+      if (token) {
+        api.setAuthToken(token);
       }
       
+      // Get user data (should have been saved by authService)
+      const userData = await authService.getStoredUserData();
+      if (userData) {
+        setUser(userData);
+      }
+      
+      setIsLoggedIn(true);
       return true;
     } catch (error: any) {
       // Handle specific API errors
@@ -310,24 +321,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(true);
       setError(null);
       
-      const authToken = await authService.loginWithGoogle(token);
+      // Attempt Google login - this will automatically store the token
+      await authService.loginWithGoogle(token);
       
-      // Get stored user data (should have been saved during Google login)
-      const storedUserData = await authService.getStoredUserData();
+      // Get token to set in api instance
+      const authToken = await authService.getToken();
+      if (authToken) {
+        api.setAuthToken(authToken);
+      }
       
-      if (storedUserData) {
-        setUser(storedUserData);
-      } else {
-        // Fetch user profile if not available in stored data
-        const userProfile = await apiService.getCurrentUser();
-        setUser(userProfile);
-        
-        // Store user data for future use
-        await AsyncStorage.setItem('user_data', JSON.stringify(userProfile));
+      // Get user data (should have been saved by authService)
+      const userData = await authService.getStoredUserData();
+      if (userData) {
+        setUser(userData);
       }
       
       setIsLoggedIn(true);
-      
       return true;
     } catch (error: any) {
       setError(error.message || 'Google sign-in failed. Please try again.');
@@ -341,7 +350,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async (): Promise<boolean> => {
     try {
       setIsLoading(true);
+      
+      // Clear auth data
       await authService.clearToken();
+      
+      // Clear token from API instance
+      api.clearAuthToken();
       
       setIsLoggedIn(false);
       setUser(null);

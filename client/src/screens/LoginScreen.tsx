@@ -14,9 +14,8 @@ import { observer } from 'mobx-react';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import * as Google from 'expo-auth-session/providers/google';
-import { runInAction } from 'mobx';
 import { theme } from '../theme';
-import { authViewModel } from '../viewmodels/authViewModel';
+import { useAuth } from '../context/AuthContext';
 import InputField from '../components/InputField';
 import GoogleButton from '../components/GoogleButton';
 import MessageDialog from '../components/MessageDialog';
@@ -36,6 +35,7 @@ type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'
 
 const LoginScreen = observer(() => {
   const navigation = useNavigation<LoginScreenNavigationProp>();
+  const auth = useAuth();
   
   // Form state
   const [email, setEmail] = useState('');
@@ -64,24 +64,18 @@ const LoginScreen = observer(() => {
     iosClientId: 'YOUR_IOS_CLIENT_ID',
   });
 
-  // Add useEffect for session check
-  useEffect(() => {
-    checkExistingSession();
-  }, []);
-
   // Check if user is already logged in
-  const checkExistingSession = async () => {
-    // If the user is already logged in, navigate directly to Home
-    if (authViewModel.isLoggedIn) {
+  useEffect(() => {
+    if (auth.isLoggedIn) {
       navigation.navigate('Home');
     }
-  };
+  }, [auth.isLoggedIn]);
 
   // Handle input changes with validation
   const handleEmailChange = (text: string) => {
     setEmail(text);
     if (touched.email) {
-      authViewModel.validateEmail(text);
+      auth.validateEmail(text);
     }
   };
 
@@ -89,7 +83,11 @@ const LoginScreen = observer(() => {
     setPassword(text);
     if (touched.password) {
       // Simple presence validation for login
-      authViewModel.passwordError = text.length === 0 ? 'This field is required' : null;
+      if (text.length === 0) {
+        auth.passwordError = 'This field is required';
+      } else {
+        auth.passwordError = null;
+      }
     }
   };
 
@@ -97,38 +95,32 @@ const LoginScreen = observer(() => {
   const handleEmailBlur = () => {
     setTouched({ ...touched, email: true });
     if (email.trim() === '') {
-      runInAction(() => {
-        authViewModel.emailError = 'This field is required';
-      });
+      auth.emailError = 'This field is required';
     } else {
-      authViewModel.validateEmail(email);
+      auth.validateEmail(email);
     }
   };
 
   const handlePasswordBlur = () => {
     setTouched({ ...touched, password: true });
-    runInAction(() => {
-      authViewModel.passwordError = password.length === 0 ? 'This field is required' : null;
-    });
+    auth.passwordError = password.length === 0 ? 'This field is required' : null;
   };
 
   // Handle login button press
   const handleLogin = async () => {
     // Validate inputs
-    const isEmailValid = authViewModel.validateEmail(email);
+    const isEmailValid = auth.validateEmail(email);
     const isPasswordValid = password.length > 0;
     
     if (!isEmailValid || !isPasswordValid) {
       if (!isPasswordValid) {
-        runInAction(() => {
-          authViewModel.passwordError = 'This field is required';
-        });
+        auth.passwordError = 'This field is required';
       }
       return;
     }
     
     // Attempt login
-    const success = await authViewModel.login({ email, password });
+    const success = await auth.login({ email, password });
     
     if (success) {
       showDialog({
@@ -137,18 +129,18 @@ const LoginScreen = observer(() => {
         message: 'You have been logged in successfully.',
         onAction: () => navigation.navigate('Home'),
       });
-    } else if (authViewModel.error) {
+    } else if (auth.error) {
       showDialog({
         type: 'error',
         title: 'Login Failed',
-        message: authViewModel.error
+        message: auth.error
       });
     }
   };
 
   // Handle Google login
   const handleGoogleLogin = async (token: string) => {
-    const success = await authViewModel.signInWithGoogle(token);
+    const success = await auth.signInWithGoogle(token);
     
     if (success) {
       showDialog({
@@ -157,11 +149,11 @@ const LoginScreen = observer(() => {
         message: 'You have been logged in successfully with Google.',
         onAction: () => navigation.navigate('Home'),
       });
-    } else if (authViewModel.error) {
+    } else if (auth.error) {
       showDialog({
         type: 'error',
         title: 'Google Login Failed',
-        message: authViewModel.error
+        message: auth.error
       });
     }
   };
@@ -207,7 +199,7 @@ const LoginScreen = observer(() => {
             value={email}
             onChangeText={handleEmailChange}
             onBlur={handleEmailBlur}
-            error={authViewModel.emailError}
+            error={auth.emailError}
             touched={touched.email}
             keyboardType="email-address"
             autoCapitalize="none"
@@ -220,7 +212,7 @@ const LoginScreen = observer(() => {
             value={password}
             onChangeText={handlePasswordChange}
             onBlur={handlePasswordBlur}
-            error={authViewModel.passwordError}
+            error={auth.passwordError}
             touched={touched.password}
             isPassword
           />
@@ -232,12 +224,12 @@ const LoginScreen = observer(() => {
           <TouchableOpacity
             style={[
               styles.button,
-              authViewModel.isLoading && styles.buttonDisabled,
+              auth.isLoading && styles.buttonDisabled,
             ]}
             onPress={handleLogin}
-            disabled={authViewModel.isLoading}
+            disabled={auth.isLoading}
           >
-            {authViewModel.isLoading ? (
+            {auth.isLoading ? (
               <ActivityIndicator color="white" />
             ) : (
               <Text style={styles.buttonText}>Login</Text>
@@ -252,7 +244,7 @@ const LoginScreen = observer(() => {
 
           <GoogleButton 
             onPress={() => promptGoogleAsync()} 
-            isLoading={authViewModel.isLoading}
+            isLoading={auth.isLoading}
           />
 
           <View style={styles.footer}>

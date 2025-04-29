@@ -28,6 +28,8 @@ import MessageDialog from '../components/MessageDialog';
 import { apiService, UserProfile } from '../services/apiService';
 import BottomNavBar from '../components/BottomNavBar';
 import { ScreenName } from '../components/BottomNavBar';
+import { useCurrency } from '../contexts/CurrencyContext';
+import { SUPPORTED_CURRENCIES } from '../utils/currencyUtils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 const { width, height } = Dimensions.get('window');
@@ -36,12 +38,13 @@ const AccountScreen = () => {
   const { user: authUser, logout } = useAuth();
   const navigation = useNavigation<NavigationProp>();
   const [activeScreen, setActiveScreen] = useState<ScreenName>('Home');
+  const { currency, setCurrency } = useCurrency();
   
   // App preferences state
   const [notifications, setNotifications] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
-  const [currency, setCurrency] = useState('₱'); // Philippine Peso
+  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
   
   // User profile state
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -405,21 +408,31 @@ const AccountScreen = () => {
     }
   };
 
-  const openPrivacyPolicy = () => {
-    // In a real app, navigate to privacy policy screen or open web URL
-    Alert.alert('Privacy Policy', 'This would open the privacy policy document.');
+  // Navigate to Contact Support
+  const navigateToContactSupport = () => {
+    navigation.navigate('ContactSupport');
   };
 
+  // Open Privacy Policy screen
+  const openPrivacyPolicy = () => {
+    navigation.navigate('PrivacyPolicy');
+  };
+
+  // Open Terms of Service screen
   const openTermsOfService = () => {
-    // In a real app, navigate to terms of service screen or open web URL
-    Alert.alert('Terms of Service', 'This would open the terms of service document.');
+    navigation.navigate('TermsOfService');
   };
   
+  // Get current currency name
+  const getCurrentCurrencyName = () => {
+    return currency.name;
+  };
+
   // Render loading state
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.container}>
-        <AppHeader showBackButton={false} showNotifications={true} />
+        <AppHeader showBackButton={false} />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>Loading your profile...</Text>
@@ -432,7 +445,7 @@ const AccountScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={theme.colors.background} />
-      <AppHeader showBackButton={false} showNotifications={true} />
+      <AppHeader showBackButton={true} />
       <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
@@ -540,7 +553,7 @@ const AccountScreen = () => {
                       <Text style={styles.settingsItemText}>Biometric Login</Text>
                       <Text style={styles.settingsItemSubtext}>Use fingerprint or Face ID</Text>
                     </View>
-          </View>
+                  </View>
                   <Switch
                     trackColor={{ false: theme.colors.lightGray, true: `${theme.colors.primary}80` }}
                     thumbColor={biometricEnabled ? theme.colors.primary : '#f4f3f4'}
@@ -549,46 +562,57 @@ const AccountScreen = () => {
                     value={biometricEnabled}
                   />
                 </TouchableOpacity>
-        </View>
+              </View>
+
+              {/* Currency Section */}
+              <View style={styles.settingsSection}>
+                <TouchableOpacity 
+                  style={styles.settingsItem} 
+                  activeOpacity={0.7}
+                  onPress={() => setShowCurrencyModal(true)}
+                >
+                  <View style={styles.settingsItemLeft}>
+                    <Ionicons name="cash-outline" size={22} color="#4CAF50" style={styles.settingsIcon} />
+                    <View style={styles.settingsItemContent}>
+                      <Text style={styles.settingsItemText}>Currency</Text>
+                      <Text style={styles.settingsItemSubtext}>{getCurrentCurrencyName()}</Text>
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
+                </TouchableOpacity>
+              </View>
 
               {/* Help & Support Section */}
               <View style={styles.settingsSection}>
-                <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7}>
-                  <View style={styles.settingsItemLeft}>
-                    <Ionicons name="help-circle-outline" size={22} color="#3F51B5" style={styles.settingsIcon} />
-                    <Text style={styles.settingsItemText}>Help Center</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
-          </TouchableOpacity>
-                <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7}>
+                <TouchableOpacity style={styles.settingsItem} onPress={navigateToContactSupport} activeOpacity={0.7}>
                   <View style={styles.settingsItemLeft}>
                     <Ionicons name="chatbox-ellipses-outline" size={22} color="#9C27B0" style={styles.settingsIcon} />
                     <Text style={styles.settingsItemText}>Contact Support</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
-          </TouchableOpacity>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
+                </TouchableOpacity>
                 <TouchableOpacity style={styles.settingsItem} onPress={openPrivacyPolicy} activeOpacity={0.7}>
                   <View style={styles.settingsItemLeft}>
                     <Ionicons name="shield-checkmark-outline" size={22} color="#F44336" style={styles.settingsIcon} />
                     <Text style={styles.settingsItemText}>Privacy Policy</Text>
-        </View>
+                  </View>
                   <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.settingsItem} onPress={openTermsOfService} activeOpacity={0.7}>
                   <View style={styles.settingsItemLeft}>
                     <Ionicons name="document-text-outline" size={22} color="#795548" style={styles.settingsIcon} />
                     <Text style={styles.settingsItemText}>Terms of Service</Text>
-            </View>
+                  </View>
                   <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
-          </TouchableOpacity>
-        </View>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Sign Out Button */}
             <TouchableOpacity style={styles.signOutButton} onPress={handleLogoutPress}>
               <Text style={styles.signOutText}>Sign Out</Text>
-          </TouchableOpacity>
-          
+            </TouchableOpacity>
+            
             <Text style={styles.versionText}>Version 1.0.0</Text>
           </>
         )}
@@ -616,9 +640,9 @@ const AccountScreen = () => {
                 onChangeText={setEditName}
                 placeholder="Enter your name"
                 autoCapitalize="words"
-            />
-          </View>
-          
+              />
+            </View>
+            
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={styles.cancelButton}
@@ -745,7 +769,7 @@ const AccountScreen = () => {
                   <Text style={styles.passwordHint}>
                     Password must be at least 8 characters and include uppercase, lowercase, number, and special character.
                   </Text>
-            </View>
+                </View>
               )}
               
               <Text style={[styles.inputLabel, { marginTop: 16 }]}>Confirm New Password</Text>
@@ -768,8 +792,8 @@ const AccountScreen = () => {
                 disabled={changingPassword}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-          
+              </TouchableOpacity>
+              
               <TouchableOpacity
                 style={styles.saveButton}
                 onPress={handleSavePassword}
@@ -782,7 +806,7 @@ const AccountScreen = () => {
                 )}
               </TouchableOpacity>
             </View>
-        </View>
+          </View>
         </View>
       )}
 
@@ -797,6 +821,45 @@ const AccountScreen = () => {
         actionText={dialogProps.actionText}
         autoDismiss={dialogProps.type === 'success'}
       />
+      
+      {/* Currency List Modal */}
+      {showCurrencyModal && (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { width: width * 0.85 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Currency</Text>
+              <TouchableOpacity
+                onPress={() => setShowCurrencyModal(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.currencyList}>
+              {SUPPORTED_CURRENCIES.map((currencyItem) => (
+                <TouchableOpacity 
+                  key={currencyItem.symbol}
+                  style={styles.currencyItem}
+                  onPress={async () => {
+                    await setCurrency(currencyItem.symbol);
+                    setShowCurrencyModal(false);
+                  }}
+                >
+                  <View style={styles.currencyItemContent}>
+                    <Text style={styles.currencySymbol}>{currencyItem.symbol}</Text>
+                    <Text style={styles.currencyName}>{currencyItem.name}</Text>
+                  </View>
+                  
+                  {currency.symbol === currencyItem.symbol && (
+                    <Ionicons name="checkmark-circle" size={24} color={theme.colors.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -1116,6 +1179,36 @@ const styles = StyleSheet.create({
   },
   successBannerText: {
     color: theme.colors.success,
+  },
+  
+  // Currency selection modal styles
+  currencyList: {
+    padding: 16,
+  },
+  currencyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.lightGray,
+  },
+  currencyItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  currencySymbol: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: theme.colors.primary,
+    marginRight: 16,
+    width: 30,
+    textAlign: 'center',
+  },
+  currencyName: {
+    fontSize: 16,
+    color: theme.colors.text,
   },
 });
 
