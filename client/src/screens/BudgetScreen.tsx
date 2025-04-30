@@ -1011,7 +1011,6 @@ const BudgetScreen = observer(() => {
   return (
     <SafeAreaView style={styles.container}>
       <AppHeader 
-        rightIcon="add-outline" 
         onRightIconPress={() => setShowAddModal(true)}
         showProfile={true}
         onProfilePress={handleProfilePress}

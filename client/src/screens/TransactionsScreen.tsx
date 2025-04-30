@@ -1967,110 +1967,9 @@ const TransactionsScreen = observer(() => {
             </View>
             
             <View style={styles.modalContent}>
-              {/* Preset Date Range Options */}
-              <View style={styles.dateRangePresets}>
-                <Text style={styles.presetSectionTitle}>Quick Selections</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 16}}>
-                  <TouchableOpacity 
-                    style={styles.presetChip}
-                    onPress={() => {
-                      // Last 7 days
-                      const end = new Date();
-                      end.setHours(23, 59, 59, 999);
-                      const start = new Date();
-                      start.setDate(end.getDate() - 6);
-                      start.setHours(0, 0, 0, 0);
-                      setCustomDateRange(prev => ({
-                        ...prev,
-                        startDate: start,
-                        endDate: end
-                      }));
-                    }}
-                  >
-                    <Text style={styles.presetChipText}>Last 7 Days</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.presetChip}
-                    onPress={() => {
-                      // Last 30 days
-                      const end = new Date();
-                      end.setHours(23, 59, 59, 999);
-                      const start = new Date();
-                      start.setDate(end.getDate() - 29);
-                      start.setHours(0, 0, 0, 0);
-                      setCustomDateRange(prev => ({
-                        ...prev,
-                        startDate: start,
-                        endDate: end
-                      }));
-                    }}
-                  >
-                    <Text style={styles.presetChipText}>Last 30 Days</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.presetChip}
-                    onPress={() => {
-                      // Current month
-                      const today = new Date();
-                      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-                      startOfMonth.setHours(0, 0, 0, 0);
-                      const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-                      endOfMonth.setHours(23, 59, 59, 999);
-                      setCustomDateRange(prev => ({
-                        ...prev,
-                        startDate: startOfMonth,
-                        endDate: endOfMonth
-                      }));
-                    }}
-                  >
-                    <Text style={styles.presetChipText}>This Month</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.presetChip}
-                    onPress={() => {
-                      // Last month
-                      const today = new Date();
-                      const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                      startOfLastMonth.setHours(0, 0, 0, 0);
-                      const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-                      endOfLastMonth.setHours(23, 59, 59, 999);
-                      setCustomDateRange(prev => ({
-                        ...prev,
-                        startDate: startOfLastMonth,
-                        endDate: endOfLastMonth
-                      }));
-                    }}
-                  >
-                    <Text style={styles.presetChipText}>Last Month</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.presetChip}
-                    onPress={() => {
-                      // Year to date
-                      const today = new Date();
-                      const startOfYear = new Date(today.getFullYear(), 0, 1);
-                      startOfYear.setHours(0, 0, 0, 0);
-                      const end = new Date();
-                      end.setHours(23, 59, 59, 999);
-                      setCustomDateRange(prev => ({
-                        ...prev,
-                        startDate: startOfYear,
-                        endDate: end
-                      }));
-                    }}
-                  >
-                    <Text style={styles.presetChipText}>Year to Date</Text>
-                  </TouchableOpacity>
-                </ScrollView>
-              </View>
+              {/* Remove the Preset Date Range Options section */}
               
               <View style={styles.dateSelectionContainer}>
-                <Text style={styles.presetSectionTitle}>Custom Range</Text>
-                
                 {/* Date Range Display */}
                 <View style={styles.dateRangeSummary}>
                   <Text style={styles.dateRangeText}>
@@ -2735,26 +2634,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.primary,
     fontWeight: '600',
-  },
-  presetSectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: 10,
-  },
-  dateRangePresets: {
-    marginBottom: 16,
-  },
-  presetChip: {
-    backgroundColor: theme.colors.lightGray,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-  },
-  presetChipText: {
-    fontSize: 14,
-    color: theme.colors.text,
   },
   dateSelectionContainer: {
     marginBottom: 16,
