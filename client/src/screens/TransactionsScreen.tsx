@@ -146,7 +146,7 @@ const TransactionsScreen = observer(() => {
   const [activeScreen, setActiveScreen] = useState<ScreenName>('Transactions');
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDateRange, setSelectedDateRange] = useState('Today');
+  const [selectedDateRange, setSelectedDateRange] = useState('All');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedType, setSelectedType] = useState('All');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -247,6 +247,14 @@ const TransactionsScreen = observer(() => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   
   const [showDatePickerEdit, setShowDatePickerEdit] = useState(false);
+  
+  // Add state for custom date range
+  const [customDateRange, setCustomDateRange] = useState({
+    startDate: new Date(new Date().setHours(0, 0, 0, 0)),
+    endDate: new Date(new Date().setHours(23, 59, 59, 999)),
+    showStartDatePicker: false,
+    showEndDatePicker: false
+  });
 
   // Add state for menu position
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
@@ -256,6 +264,9 @@ const TransactionsScreen = observer(() => {
     canEditType: false,
     canEditDate: false,
   });
+
+  // Add state for custom date range modal
+  const [showCustomDateRangeModal, setShowCustomDateRangeModal] = useState(false);
 
   // Initialize all sections as expanded by default
   useEffect(() => {
@@ -464,15 +475,65 @@ const TransactionsScreen = observer(() => {
     }
   };
 
-  // Group transactions by date
+  // Group transactions by date with date range filtering
   const getGroupedTransactions = () => {
+    // Apply date range filtering based on selectedDateRange
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
     const filtered = transactions.filter(transaction => {
+      // Apply search filter
       const matchesSearch = transaction.title.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      // Apply category filter
       const matchesCategory = selectedCategory === 'All' || transaction.category === selectedCategory;
+      
+      // Apply type filter
       const matchesType = selectedType === 'All' || transaction.type === selectedType;
-      return matchesSearch && matchesCategory && matchesType;
+      
+      // Apply date range filter
+      let matchesDateRange = true;
+      
+      if (selectedDateRange === 'Today') {
+        // Today: transactions from the current day
+        const transactionDate = new Date(transaction.date);
+        transactionDate.setHours(0, 0, 0, 0);
+        matchesDateRange = transactionDate.getTime() === today.getTime();
+      } 
+      else if (selectedDateRange === 'This Week') {
+        // This Week: transactions from the current week (Sunday-Saturday)
+        const currentDay = today.getDay(); // 0 = Sunday, 6 = Saturday
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - currentDay); // Go back to Sunday
+        startOfWeek.setHours(0, 0, 0, 0);
+        
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6); // Go forward to Saturday
+        endOfWeek.setHours(23, 59, 59, 999);
+        
+        const transactionDate = new Date(transaction.date);
+        matchesDateRange = transactionDate >= startOfWeek && transactionDate <= endOfWeek;
+      } 
+      else if (selectedDateRange === 'This Month') {
+        // This Month: transactions from the current calendar month
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+        
+        const transactionDate = new Date(transaction.date);
+        matchesDateRange = transactionDate >= startOfMonth && transactionDate <= endOfMonth;
+      } 
+      else if (selectedDateRange === 'Custom') {
+        // Custom: transactions between customDateRange.startDate and customDateRange.endDate
+        matchesDateRange = 
+          transaction.date >= customDateRange.startDate && 
+          transaction.date <= customDateRange.endDate;
+      }
+      // All: no date filtering
+      
+      return matchesSearch && matchesCategory && matchesType && matchesDateRange;
     });
 
+    // Group filtered transactions by date
     const groups: { [key: string]: Transaction[] } = {};
     
     filtered.forEach(transaction => {
@@ -1666,6 +1727,82 @@ const TransactionsScreen = observer(() => {
     navigation.navigate('Account');
   };
 
+  // Handle date range filter selection
+  const handleDateRangeSelect = (range: string) => {
+    setSelectedDateRange(range);
+    
+    // If 'Custom' is selected, show a modal for date range selection
+    if (range === 'Custom') {
+      showCustomDateRangePicker();
+    }
+  };
+  
+  // Function to show custom date range picker modal
+  const showCustomDateRangePicker = () => {
+    // Reset custom date range to current month
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+    
+    setCustomDateRange({
+      startDate: startOfMonth,
+      endDate: endOfMonth,
+      showStartDatePicker: false,
+      showEndDatePicker: false
+    });
+    
+    // Show modal for date range selection
+    setShowCustomDateRangeModal(true);
+  };
+  
+  // Handler for start date change in custom range
+  const handleStartDateChange = (event: any, selectedDate?: Date) => {
+    setCustomDateRange(prev => ({
+      ...prev,
+      showStartDatePicker: false
+    }));
+    
+    if (selectedDate) {
+      // Set the hours to start of day
+      selectedDate.setHours(0, 0, 0, 0);
+      
+      // Ensure startDate is not after endDate
+      const adjustedEndDate = selectedDate > customDateRange.endDate 
+        ? selectedDate 
+        : customDateRange.endDate;
+      
+      setCustomDateRange(prev => ({
+        ...prev,
+        startDate: selectedDate,
+        endDate: adjustedEndDate
+      }));
+    }
+  };
+  
+  // Handler for end date change in custom range
+  const handleEndDateChange = (event: any, selectedDate?: Date) => {
+    setCustomDateRange(prev => ({
+      ...prev,
+      showEndDatePicker: false
+    }));
+    
+    if (selectedDate) {
+      // Set the hours to end of day
+      selectedDate.setHours(23, 59, 59, 999);
+      
+      // Ensure endDate is not before startDate
+      const adjustedStartDate = selectedDate < customDateRange.startDate 
+        ? selectedDate 
+        : customDateRange.startDate;
+      
+      setCustomDateRange(prev => ({
+        ...prev,
+        endDate: selectedDate,
+        startDate: adjustedStartDate
+      }));
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <AppHeader 
@@ -1688,21 +1825,21 @@ const TransactionsScreen = observer(() => {
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
-      </View>
+        </View>
         
         <ScrollView 
           horizontal 
           showsHorizontalScrollIndicator={false}
           style={styles.filterContainer}
         >
-          {['Today', 'This Week', 'This Month', 'Custom'].map((range) => (
+          {['All', 'Today', 'This Week', 'This Month', 'Custom'].map((range) => (
             <TouchableOpacity
               key={range}
               style={[
                 styles.filterChip,
                 selectedDateRange === range && styles.activeFilterChip
               ]}
-              onPress={() => setSelectedDateRange(range)}
+              onPress={() => handleDateRangeSelect(range)}
             >
               <Text style={[
                 styles.filterChipText,
@@ -1713,6 +1850,26 @@ const TransactionsScreen = observer(() => {
             </TouchableOpacity>
           ))}
         </ScrollView>
+        
+        {/* Show selected custom date range when active */}
+        {selectedDateRange === 'Custom' && (
+          <View style={styles.customRangeDisplay}>
+            <Ionicons name="calendar" size={16} color={theme.colors.primary} />
+            <Text style={styles.customRangeText}>
+              {customDateRange.startDate.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
+              })} - {customDateRange.endDate.toLocaleDateString('en-US', {
+                month: 'short', 
+                day: 'numeric',
+                year: 'numeric'
+              })}
+            </Text>
+            <TouchableOpacity onPress={showCustomDateRangePicker}>
+              <Text style={styles.customRangeChangeBtn}>Change</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
       
       {/* Transaction List */}
@@ -1792,6 +1949,224 @@ const TransactionsScreen = observer(() => {
         actionText={dialogConfig.actionText}
         autoDismiss={dialogConfig.autoDismiss}
       />
+      
+      {/* Custom Date Range Modal */}
+      <Modal
+        visible={showCustomDateRangeModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowCustomDateRangeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { height: 'auto', maxHeight: '80%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Date Range</Text>
+              <TouchableOpacity onPress={() => setShowCustomDateRangeModal(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalContent}>
+              {/* Preset Date Range Options */}
+              <View style={styles.dateRangePresets}>
+                <Text style={styles.presetSectionTitle}>Quick Selections</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 16}}>
+                  <TouchableOpacity 
+                    style={styles.presetChip}
+                    onPress={() => {
+                      // Last 7 days
+                      const end = new Date();
+                      end.setHours(23, 59, 59, 999);
+                      const start = new Date();
+                      start.setDate(end.getDate() - 6);
+                      start.setHours(0, 0, 0, 0);
+                      setCustomDateRange(prev => ({
+                        ...prev,
+                        startDate: start,
+                        endDate: end
+                      }));
+                    }}
+                  >
+                    <Text style={styles.presetChipText}>Last 7 Days</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.presetChip}
+                    onPress={() => {
+                      // Last 30 days
+                      const end = new Date();
+                      end.setHours(23, 59, 59, 999);
+                      const start = new Date();
+                      start.setDate(end.getDate() - 29);
+                      start.setHours(0, 0, 0, 0);
+                      setCustomDateRange(prev => ({
+                        ...prev,
+                        startDate: start,
+                        endDate: end
+                      }));
+                    }}
+                  >
+                    <Text style={styles.presetChipText}>Last 30 Days</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.presetChip}
+                    onPress={() => {
+                      // Current month
+                      const today = new Date();
+                      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                      startOfMonth.setHours(0, 0, 0, 0);
+                      const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                      endOfMonth.setHours(23, 59, 59, 999);
+                      setCustomDateRange(prev => ({
+                        ...prev,
+                        startDate: startOfMonth,
+                        endDate: endOfMonth
+                      }));
+                    }}
+                  >
+                    <Text style={styles.presetChipText}>This Month</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.presetChip}
+                    onPress={() => {
+                      // Last month
+                      const today = new Date();
+                      const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                      startOfLastMonth.setHours(0, 0, 0, 0);
+                      const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+                      endOfLastMonth.setHours(23, 59, 59, 999);
+                      setCustomDateRange(prev => ({
+                        ...prev,
+                        startDate: startOfLastMonth,
+                        endDate: endOfLastMonth
+                      }));
+                    }}
+                  >
+                    <Text style={styles.presetChipText}>Last Month</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.presetChip}
+                    onPress={() => {
+                      // Year to date
+                      const today = new Date();
+                      const startOfYear = new Date(today.getFullYear(), 0, 1);
+                      startOfYear.setHours(0, 0, 0, 0);
+                      const end = new Date();
+                      end.setHours(23, 59, 59, 999);
+                      setCustomDateRange(prev => ({
+                        ...prev,
+                        startDate: startOfYear,
+                        endDate: end
+                      }));
+                    }}
+                  >
+                    <Text style={styles.presetChipText}>Year to Date</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+              
+              <View style={styles.dateSelectionContainer}>
+                <Text style={styles.presetSectionTitle}>Custom Range</Text>
+                
+                {/* Date Range Display */}
+                <View style={styles.dateRangeSummary}>
+                  <Text style={styles.dateRangeText}>
+                    {customDateRange.startDate.toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric'
+                    })}
+                  </Text>
+                  <Text style={styles.dateRangeSeparator}>to</Text>
+                  <Text style={styles.dateRangeText}>
+                    {customDateRange.endDate.toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric'
+                    })}
+                  </Text>
+                </View>
+              
+                {/* Start Date */}
+                <Text style={styles.inputLabel}>Start Date</Text>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setCustomDateRange(prev => ({ 
+                    ...prev, 
+                    showStartDatePicker: true,
+                    showEndDatePicker: false 
+                  }))}
+                >
+                  <Text style={styles.dateButtonText}>
+                    {customDateRange.startDate.toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    })}
+                  </Text>
+                  <Ionicons name="calendar-outline" size={20} color={theme.colors.text} />
+                </TouchableOpacity>
+                {customDateRange.showStartDatePicker && (
+                  <DateTimePicker
+                    value={customDateRange.startDate}
+                    mode="date"
+                    display="default"
+                    onChange={handleStartDateChange}
+                    maximumDate={new Date()}
+                  />
+                )}
+                
+                {/* End Date */}
+                <Text style={styles.inputLabel}>End Date</Text>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setCustomDateRange(prev => ({ 
+                    ...prev, 
+                    showEndDatePicker: true,
+                    showStartDatePicker: false 
+                  }))}
+                >
+                  <Text style={styles.dateButtonText}>
+                    {customDateRange.endDate.toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric'
+                    })}
+                  </Text>
+                  <Ionicons name="calendar-outline" size={20} color={theme.colors.text} />
+                </TouchableOpacity>
+                {customDateRange.showEndDatePicker && (
+                  <DateTimePicker
+                    value={customDateRange.endDate}
+                    mode="date"
+                    display="default"
+                    onChange={handleEndDateChange}
+                    maximumDate={new Date()}
+                  />
+                )}
+              </View>
+              
+              {/* Apply Button */}
+              <TouchableOpacity 
+                style={[styles.addButton, { backgroundColor: theme.colors.primary }]}
+                onPress={() => {
+                  setShowCustomDateRangeModal(false);
+                  // Ensure the selected date range is set to Custom
+                  setSelectedDateRange('Custom');
+                }}
+              >
+                <Ionicons name="checkmark" size={20} color={theme.colors.white} style={styles.buttonIcon} />
+                <Text style={styles.addButtonText}>Apply Custom Range</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       
       <BottomNavBar activeScreen={activeScreen} onPress={handleNavigation} />
     </SafeAreaView>
@@ -2339,6 +2714,70 @@ const styles = StyleSheet.create({
   disabledDateText: {
     fontSize: 16,
     color: theme.colors.text,
+  },
+  customRangeDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 12,
+  },
+  customRangeText: {
+    fontSize: 14,
+    color: theme.colors.text,
+    fontWeight: '500',
+    marginLeft: 6,
+    marginRight: 10,
+  },
+  customRangeChangeBtn: {
+    fontSize: 13,
+    color: theme.colors.primary,
+    fontWeight: '600',
+  },
+  presetSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginBottom: 10,
+  },
+  dateRangePresets: {
+    marginBottom: 16,
+  },
+  presetChip: {
+    backgroundColor: theme.colors.lightGray,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
+  },
+  presetChipText: {
+    fontSize: 14,
+    color: theme.colors.text,
+  },
+  dateSelectionContainer: {
+    marginBottom: 16,
+  },
+  dateRangeSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.colors.background,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  dateRangeText: {
+    fontSize: 15,
+    color: theme.colors.text,
+    fontWeight: '500',
+  },
+  dateRangeSeparator: {
+    fontSize: 15,
+    color: theme.colors.textLight,
+    marginHorizontal: 10,
   },
 });
 
