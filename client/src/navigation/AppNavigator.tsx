@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Dimensions, ActivityIndicator } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Import screens
 import LoginScreen from '../screens/LoginScreen';
@@ -18,6 +19,9 @@ import AccountScreen from '../screens/AccountScreen';
 import ContactSupportScreen from '../screens/ContactSupportScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import TermsOfServiceScreen from '../screens/TermsOfServiceScreen';
+import OnboardingCurrencyScreen from '../screens/OnboardingCurrencyScreen';
+import OnboardingIncomeScreen from '../screens/OnboardingIncomeScreen';
+import OnboardingBudgetScreen from '../screens/OnboardingBudgetScreen';
 
 // Define navigation types
 export type RootStackParamList = {
@@ -36,48 +40,101 @@ export type RootStackParamList = {
   ContactSupport: undefined;
   PrivacyPolicy: undefined;
   TermsOfService: undefined;
+  OnboardingCurrency: undefined;
+  OnboardingIncome: undefined;
+  OnboardingBudget: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const AppNavigator = observer(() => {
   const { isLoggedIn, isLoading } = useAuth();
+  const [isFirstLogin, setIsFirstLogin] = useState(false);
+  
+  // Check if this is user's first login after registration
+  useEffect(() => {
+    const checkOnboardingStatus = async () => {
+      try {
+        if (isLoggedIn) {
+          const hasCompletedOnboarding = await AsyncStorage.getItem('has_completed_onboarding');
+          const justRegistered = await AsyncStorage.getItem('just_registered');
+          
+          // If user just registered and hasn't completed onboarding
+          if (justRegistered === 'true' && !hasCompletedOnboarding) {
+            setIsFirstLogin(true);
+            // Clear the registration flag
+            await AsyncStorage.removeItem('just_registered');
+          } else {
+            setIsFirstLogin(false);
+          }
+        } else {
+          // User is not logged in, ensure we clear any lingering flags
+          setIsFirstLogin(false);
+          await AsyncStorage.removeItem('just_registered');
+          await AsyncStorage.removeItem('has_completed_onboarding');
+        }
+      } catch (error) {
+        console.error('Error checking onboarding status:', error);
+        setIsFirstLogin(false);
+      }
+    };
+    
+    checkOnboardingStatus();
+  }, [isLoggedIn]);
 
   if (isLoading) {
-  return (
+    return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
-    </View>
-  );
-}
+      </View>
+    );
+  }
 
   return (
-      <NavigationContainer>
-        <Stack.Navigator
-        initialRouteName={isLoggedIn ? 'Home' : 'Login'}
-          screenOptions={{
-            headerShown: false,
-            animation: 'none',
-            animationDuration: 0,
-            gestureEnabled: false,
-            presentation: 'card',
-            contentStyle: {
-              backgroundColor: '#fff',
-            },
-          }}
-        >
-          <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="Register" component={RegisterScreen} />
-          <Stack.Screen name="Home" component={HomeScreen} />
-          <Stack.Screen name="Budget" component={BudgetScreen} />
-          <Stack.Screen name="Transactions" component={TransactionsScreen} />
-          <Stack.Screen name="Reports" component={ReportsScreen} />
-          <Stack.Screen name="Account" component={AccountScreen} />
+    <NavigationContainer>
+      <Stack.Navigator
+        initialRouteName={
+          isLoggedIn 
+            ? isFirstLogin 
+              ? 'OnboardingCurrency' 
+              : 'Home' 
+            : 'Login'
+        }
+        screenOptions={{
+          headerShown: false,
+          animation: 'none',
+          animationDuration: 0,
+          gestureEnabled: false,
+          presentation: 'card',
+          contentStyle: {
+            backgroundColor: '#fff',
+          },
+        }}
+      >
+        <Stack.Screen 
+          name="Login" 
+          component={LoginScreen} 
+        />
+        <Stack.Screen 
+          name="Register" 
+          component={RegisterScreen} 
+          key={`register-screen-${Date.now()}`}
+        />
+        <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="Budget" component={BudgetScreen} />
+        <Stack.Screen name="Transactions" component={TransactionsScreen} />
+        <Stack.Screen name="Reports" component={ReportsScreen} />
+        <Stack.Screen name="Account" component={AccountScreen} />
         <Stack.Screen name="ContactSupport" component={ContactSupportScreen} />
         <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
         <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
-        </Stack.Navigator>
-      </NavigationContainer>
+        
+        {/* Onboarding Screens */}
+        <Stack.Screen name="OnboardingCurrency" component={OnboardingCurrencyScreen} />
+        <Stack.Screen name="OnboardingIncome" component={OnboardingIncomeScreen} />
+        <Stack.Screen name="OnboardingBudget" component={OnboardingBudgetScreen} />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 });
 

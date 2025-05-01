@@ -19,6 +19,7 @@ import { useAuth } from '../context/AuthContext';
 import InputField from '../components/InputField';
 import GoogleButton from '../components/GoogleButton';
 import MessageDialog from '../components/MessageDialog';
+import { authViewModel } from '../viewmodels/authViewModel';
 
 // Define the navigation prop type
 type RootStackParamList = {
@@ -63,6 +64,11 @@ const LoginScreen = observer(() => {
     androidClientId: 'YOUR_ANDROID_CLIENT_ID',
     iosClientId: 'YOUR_IOS_CLIENT_ID',
   });
+
+  // Reset auth errors when screen is mounted
+  useEffect(() => {
+    auth.resetErrors();
+  }, []);
 
   // Check if user is already logged in
   useEffect(() => {
@@ -250,7 +256,20 @@ const LoginScreen = observer(() => {
           <View style={styles.footer}>
             <Text style={styles.footerText}>Don't have an account? </Text>
             <TouchableOpacity
-              onPress={() => navigation.navigate('Register')}
+              onPress={() => {
+                // Force immediate reset of auth context
+                auth.resetErrors();
+                
+                // Use MobX action-safe method to reset auth state
+                authViewModel.resetForRegistration();
+                
+                // Use reset navigation instead of navigate to completely clear the stack
+                // This bypasses any navigation issues caused by loading states
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Register' }],
+                });
+              }}
             >
               <Text style={styles.footerLink}>Sign Up</Text>
             </TouchableOpacity>

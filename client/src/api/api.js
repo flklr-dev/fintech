@@ -47,6 +47,11 @@ api.interceptors.response.use(
       
       // Clear token as it's invalid
       await AsyncStorage.removeItem('auth_token');
+      await AsyncStorage.removeItem('token_expiry');
+      await AsyncStorage.removeItem('user_data');
+      
+      // Clear auth headers
+      delete api.defaults.headers.common['Authorization'];
       
       // You could implement token refresh logic here if your API supports it
       
@@ -66,7 +71,11 @@ api.interceptors.response.use(
       // Handle 401 unauthorized (e.g., token expired)
       if (error.response.status === 401) {
         console.error('Authentication error - user needs to login again');
-        // TODO: Implement proper auth logout or token refresh logic here
+        // Clear auth tokens and headers
+        await AsyncStorage.removeItem('auth_token');
+        await AsyncStorage.removeItem('token_expiry');
+        await AsyncStorage.removeItem('user_data');
+        delete api.defaults.headers.common['Authorization'];
       }
     } else if (error.request) {
       // Request was made but no response received

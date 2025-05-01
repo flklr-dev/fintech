@@ -351,17 +351,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setIsLoading(true);
       
-      // Clear auth data
-      await authService.clearToken();
+      // First reset the auth state
+      setIsLoggedIn(false);
+      setUser(null);
+      resetErrors();
+      
+      // Clear all auth-related storage
+      await AsyncStorage.removeItem('auth_token');
+      await AsyncStorage.removeItem('token_expiry');
+      await AsyncStorage.removeItem('user_data');
+      await AsyncStorage.removeItem('lastPasswordChange');
+      
+      // Clear auth-related flags to prevent issues on next login
+      await AsyncStorage.removeItem('just_registered');
+      await AsyncStorage.removeItem('has_completed_onboarding');
       
       // Clear token from API instance
       api.clearAuthToken();
       
-      setIsLoggedIn(false);
-      setUser(null);
+      // Call the auth service to clean up any remaining state
+      await authService.clearToken();
+
+      // Add a short delay to ensure all async operations are completed
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       return true;
     } catch (error) {
+      console.error('Logout error:', error);
       setError('Logout failed. Please try again.');
       return false;
     } finally {

@@ -1825,7 +1825,7 @@ const TransactionsScreen = observer(() => {
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
-        </View>
+      </View>
         
         <ScrollView 
           horizontal 

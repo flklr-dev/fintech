@@ -123,6 +123,16 @@ const clearAuthData = async (): Promise<void> => {
     await AsyncStorage.removeItem(TOKEN_EXPIRY_KEY);
     await AsyncStorage.removeItem(USER_DATA_KEY);
     await AsyncStorage.removeItem('lastPasswordChange');
+    await AsyncStorage.removeItem('just_registered');
+    await AsyncStorage.removeItem('has_completed_onboarding');
+    
+    // Also clear any other session data
+    await AsyncStorage.removeItem('preferred_currency');
+    await AsyncStorage.removeItem('user_income');
+    await AsyncStorage.removeItem('income_frequency');
+    
+    // Clear auth headers from axios instance
+    delete axiosInstance.defaults.headers.common['Authorization'];
   } catch (error) {
     console.error('Error clearing auth data:', error);
   }

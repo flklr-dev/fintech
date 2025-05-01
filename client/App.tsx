@@ -10,7 +10,7 @@ export default function App() {
     <SafeAreaProvider>
       <AuthProvider>
         <CurrencyProvider>
-          <AppNavigator />
+        <AppNavigator />
         </CurrencyProvider>
       </AuthProvider>
       <StatusBar style="auto" />

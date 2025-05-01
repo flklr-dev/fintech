@@ -21,6 +21,7 @@ import InputField from '../components/InputField';
 import GoogleButton from '../components/GoogleButton';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter';
 import MessageDialog from '../components/MessageDialog';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Define the navigation prop type
 type RootStackParamList = {
@@ -82,7 +83,26 @@ const RegisterScreen = observer(() => {
 
   // Reset form errors on component load
   useEffect(() => {
-    authViewModel.resetErrors();
+    // Clear any existing authentication state that might be lingering
+    const cleanupAuth = async () => {
+      try {
+        // Reset auth state using MobX-safe method
+        authViewModel.resetForRegistration();
+        
+        // If we're not logged in, ensure all auth tokens are cleared
+        if (!authViewModel.isLoggedIn) {
+          await AsyncStorage.removeItem('auth_token');
+          await AsyncStorage.removeItem('token_expiry');
+          await AsyncStorage.removeItem('user_data');
+          await AsyncStorage.removeItem('has_completed_onboarding');
+          await AsyncStorage.removeItem('just_registered');
+        }
+      } catch (error) {
+        console.error('Error cleaning up auth state:', error);
+      }
+    };
+    
+    cleanupAuth();
   }, []);
 
   // Add useEffect for session check
@@ -249,11 +269,14 @@ const RegisterScreen = observer(() => {
     );
     
     if (success) {
+      // Set the flag to indicate this is a new registration that needs onboarding
+      await AsyncStorage.setItem('just_registered', 'true');
+      
       showDialog({
         type: 'success',
         title: 'Registration Successful',
         message: 'Your account has been created successfully.',
-        onAction: () => navigation.navigate('Home'),
+        onAction: () => navigation.navigate('OnboardingCurrency' as never),
       });
     } else if (authViewModel.error) {
       showDialog({

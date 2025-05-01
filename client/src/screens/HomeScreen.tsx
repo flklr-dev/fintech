@@ -59,8 +59,17 @@ const HomeScreen = observer(() => {
 
   // Check authentication and load data on mount
   useEffect(() => {
-    checkAuthentication();
-    fetchAllData();
+    const initializeScreen = async () => {
+      // First check authentication
+      const isAuthenticated = await checkAuthentication();
+      
+      // Only fetch data if authenticated
+      if (isAuthenticated) {
+        await fetchAllData();
+      }
+    };
+    
+    initializeScreen();
   }, []);
 
   const checkAuthentication = async () => {
@@ -94,6 +103,7 @@ const HomeScreen = observer(() => {
             });
           }
         });
+        return false;
       } else if (!authViewModel.isLoggedIn) {
         // If token exists but authViewModel state is wrong, update the state
         // without showing any dialog (silent update)
@@ -115,8 +125,10 @@ const HomeScreen = observer(() => {
           console.error('Error loading stored user data:', err);
         }
       }
+      return true;
     } catch (error) {
       console.error('Authentication check error:', error);
+      return false;
     }
   };
 

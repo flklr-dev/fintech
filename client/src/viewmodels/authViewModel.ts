@@ -362,6 +362,19 @@ class AuthViewModel {
       });
     }
   }
+
+  // Reset state for going to registration screen
+  resetForRegistration() {
+    runInAction(() => {
+      this.isLoading = false;
+      this.error = null;
+      this.emailError = null;
+      this.passwordError = null;
+      this.confirmPasswordError = null;
+      this.nameError = null;
+      this.passwordStrength = null;
+    });
+  }
 }
 
 // Create a singleton instance

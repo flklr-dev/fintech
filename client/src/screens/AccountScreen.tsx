@@ -230,15 +230,34 @@ const AccountScreen = () => {
   const handleLogout = async () => {
     try {
       setLoading(true);
+      
+      // Properly clean up authentication state
       await logout();
-            navigation.reset({
-              index: 0,
+      
+      // Clear any additional tokens or cached data
+      await AsyncStorage.removeItem('auth_token');
+      await AsyncStorage.removeItem('user_data');
+      await AsyncStorage.removeItem('token_expiry');
+      
+      // Reset any other session-related flags
+      await AsyncStorage.removeItem('has_completed_onboarding');
+      await AsyncStorage.removeItem('just_registered');
+      
+      // Reset the navigation stack completely to ensure a fresh login state
+      // First, navigate to Login with animation disabled
+      navigation.reset({
+        index: 0,
         routes: [{ name: 'Login' as keyof RootStackParamList }],
-            });
+      });
+      
+      // Let the navigation complete and then reset auth state again
+      setTimeout(() => {
+        setLoading(false);
+        setDialogVisible(false);
+      }, 150);
     } catch (error) {
       console.error('Logout error:', error);
       Alert.alert('Error', 'Failed to log out. Please try again.');
-    } finally {
       setLoading(false);
       setDialogVisible(false);
     }
@@ -427,7 +446,7 @@ const AccountScreen = () => {
   const getCurrentCurrencyName = () => {
     return currency.name;
   };
-
+  
   // Render loading state
   if (loading && !refreshing) {
     return (
