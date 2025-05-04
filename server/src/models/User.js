@@ -14,13 +14,28 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'Password is required'],
+    required: function() {
+      return this.authProvider === 'local';
+    },
     minlength: [8, 'Password must be at least 8 characters'],
     select: false
   },
   name: {
     type: String,
     required: [true, 'Name is required']
+  },
+  photo: {
+    type: String,
+    default: null
+  },
+  authProvider: {
+    type: String,
+    enum: ['local', 'google'],
+    default: 'local'
+  },
+  isVerified: {
+    type: Boolean,
+    default: false
   },
   role: {
     type: String,

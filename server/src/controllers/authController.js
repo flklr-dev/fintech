@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const { promisify } = require('util');
 const User = require('../models/User');
 const config = require('../config/config');
+const admin = require('../config/firebaseAdmin');
 
 // Create a token for a user ID
 const signToken = id => {
@@ -156,4 +157,66 @@ exports.restrictTo = (...roles) => {
     }
     next();
   };
+};
+
+exports.googleSignIn = async (req, res) => {
+  try {
+    const { token } = req.body;
+    
+    if (!token) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Google token is required'
+      });
+    }
+    
+    // Verify the Google token with Firebase Admin
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    const { email, name, picture } = decodedToken;
+    
+    // Check if user exists with this email
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      // Create new user if doesn't exist
+      user = await User.create({
+        email,
+        name,
+        photo: picture,
+        authProvider: 'google',
+        isVerified: true
+      });
+    } else if (user.authProvider !== 'google') {
+      // If user exists but registered with different method, link the accounts
+      user.authProvider = 'google';
+      user.isVerified = true;
+      await user.save();
+    }
+    
+    // Generate JWT token for our API
+    const authToken = jwt.sign(
+      { id: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+    
+    res.status(200).json({
+      status: 'success',
+      token: authToken,
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          name: user.name,
+          photo: user.photo
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Google Sign-In Error:', error);
+    res.status(400).json({
+      status: 'fail',
+      message: error.message || 'Failed to authenticate with Google'
+    });
+  }
 }; 

@@ -565,13 +565,13 @@ const HomeScreen = observer(() => {
                       size={16} 
                       color="#fff" 
                     />
-              </View>
-              <View style={styles.transactionDetails}>
+                  </View>
+                  <View style={styles.transactionDetails}>
                     <Text style={styles.transactionTitle}>{transaction.description || transaction.category}</Text>
                     <Text style={styles.transactionDate}>
                       {formatTransactionDate(transaction.date)}
                     </Text>
-              </View>
+                  </View>
                   <Text style={[
                     styles.transactionAmount, 
                     transaction.type === 'income' ? styles.incomeAmount : {}
@@ -579,10 +579,10 @@ const HomeScreen = observer(() => {
                     {transaction.type === 'income' ? '+' : '-'}
                     {formatCurrency(transaction.amount)}
                   </Text>
-            </TouchableOpacity>
+                </TouchableOpacity>
               ))
             ) : (
-              <View style={styles.emptyStateContainer}>
+              <View style={styles.emptyState}>
                 <Text style={styles.emptyStateText}>No recent transactions</Text>
               </View>
             )}
@@ -607,55 +607,55 @@ const HomeScreen = observer(() => {
                 const isCloseToLimit = percentage >= 85 && percentage <= 100;
                 const color = getCategoryColor(budget.category);
               
-              return (
+                return (
                   <View key={budget._id || index} style={[
                     styles.budgetItem, 
                     styles.cardShadow,
                     isCloseToLimit && styles.warningBudget,
                     isOverBudget && styles.overBudgetItem
                   ]}>
-                  <View style={styles.budgetHeader}>
+                    <View style={styles.budgetHeader}>
                       <View style={[styles.categoryIcon, { backgroundColor: color }]}>
                         <Ionicons 
                           name={getCategoryIcon(budget.category)} 
                           size={16} 
                           color="#fff" 
                         />
-                    </View>
-                    <View style={styles.budgetInfoContainer}>
+                      </View>
+                      <View style={styles.budgetInfoContainer}>
                         <Text style={styles.budgetCategory}>{budget.category}</Text>
-                      <Text style={styles.budgetNumbers}>
-                        <Text style={isOverBudget ? styles.overBudget : undefined}>
+                        <Text style={styles.budgetNumbers}>
+                          <Text style={isOverBudget ? styles.overBudget : undefined}>
                             {formatCurrency(spent)}
-                        </Text>
-                        <Text style={styles.budgetSeparator}> / </Text>
+                          </Text>
+                          <Text style={styles.budgetSeparator}> / </Text>
                           <Text>{formatCurrency(budget.amount)}</Text>
+                        </Text>
+                      </View>
+                      <Text style={[
+                        styles.budgetPercentage, 
+                        isCloseToLimit ? styles.warningText : null,
+                        isOverBudget ? styles.overBudget : styles.underBudget
+                      ]}>
+                        {percentage.toFixed(0)}%
                       </Text>
                     </View>
-                    <Text style={[
-                      styles.budgetPercentage, 
-                        isCloseToLimit ? styles.warningText : null,
-                      isOverBudget ? styles.overBudget : styles.underBudget
-                    ]}>
-                      {percentage.toFixed(0)}%
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.progressBarContainer}>
-                    <View 
-                      style={[
-                        styles.progressBar, 
+                    
+                    <View style={styles.progressBarContainer}>
+                      <View 
+                        style={[
+                          styles.progressBar, 
                           isOverBudget ? styles.overBudgetBar : { backgroundColor: color },
                           isCloseToLimit && !isOverBudget ? styles.warningBar : null,
                           { width: `${Math.min(percentage, 100)}%` }
-                      ]} 
-                    />
+                        ]} 
+                      />
+                    </View>
                   </View>
-                </View>
-              );
+                );
               })
             ) : (
-              <View style={styles.emptyStateContainer}>
+              <View style={styles.emptyState}>
                 <Text style={styles.emptyStateText}>No budgets created yet</Text>
                 <TouchableOpacity 
                   style={styles.createBudgetButton}
@@ -953,23 +953,10 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 3,
   },
-  emptyStateContainer: {
+  emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: theme.colors.white,
-    borderRadius: 16,
-    ...Platform.select({
-      ios: {
-        shadowColor: theme.colors.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
   },
   emptyStateText: {
     fontSize: 16,

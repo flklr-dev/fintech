@@ -321,24 +321,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(true);
       setError(null);
       
+      console.log('AuthContext: Processing Google Sign-In token');
+      
       // Attempt Google login - this will automatically store the token
-      await authService.loginWithGoogle(token);
+      const success = await authService.loginWithGoogle(token);
+      
+      if (!success) {
+        throw new Error('Failed to authenticate with Google');
+      }
+      
+      console.log('AuthContext: Google Sign-In successful, getting token');
       
       // Get token to set in api instance
       const authToken = await authService.getToken();
       if (authToken) {
+        console.log('AuthContext: Setting token in API instance');
         api.setAuthToken(authToken);
+      } else {
+        console.warn('AuthContext: No token returned after Google Sign-In');
       }
       
       // Get user data (should have been saved by authService)
       const userData = await authService.getStoredUserData();
       if (userData) {
+        console.log('AuthContext: Setting user data', userData.name);
         setUser(userData);
+      } else {
+        console.warn('AuthContext: No user data found after Google Sign-In');
       }
       
+      // Set logged in state
+      console.log('AuthContext: Setting logged in state to true');
       setIsLoggedIn(true);
+      
+      // Add a small delay to ensure token is properly set
+      console.log('AuthContext: Adding delay for token propagation');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      console.log('AuthContext: Google Sign-In process completed successfully');
       return true;
     } catch (error: any) {
+      console.error('AuthContext: Google Sign-In error:', error);
       setError(error.message || 'Google sign-in failed. Please try again.');
       return false;
     } finally {

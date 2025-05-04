@@ -1099,6 +1099,7 @@ const styles = StyleSheet.create({
   },
   chartLegend: {
     flexDirection: 'row',
+
     justifyContent: 'center',
     marginTop: 8,
   },
@@ -1167,4 +1168,4 @@ const styles = StyleSheet.create({
   }
 });
 
-export default ReportsScreen; 
+export default ReportsScreen; export default ReportsScreen; 

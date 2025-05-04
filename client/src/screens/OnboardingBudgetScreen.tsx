@@ -242,14 +242,6 @@ const OnboardingBudgetScreen = () => {
       }),
     ]).start();
     
-    // If no budgets, just go to home
-    if (userBudgets.length === 0) {
-      // Set flag indicating onboarding is complete
-      await AsyncStorage.setItem('has_completed_onboarding', 'true');
-      navigation.navigate('Home' as never);
-      return;
-    }
-    
     // Save budgets to server
     setLoading(true);
     
@@ -262,28 +254,36 @@ const OnboardingBudgetScreen = () => {
       const token = await verifyAndSetAuthToken();
       console.log('Using token for budget creation:', token ? 'Token is valid' : 'No token');
       
-      // IMPORTANT: First sync the income data to the server before creating budgets
+      // IMPORTANT: Always sync the income data to the server
       const incomeSynced = await syncIncomeToServer();
       if (!incomeSynced) {
         console.warn('Could not sync income to server, budget creation might fail');
+      } else {
+        console.log('Income successfully synced to server');
       }
       
-      // Create budgets in parallel
-      await Promise.all(
-        userBudgets.map(budget => 
-          budgetService.createBudget({
-            category: budget.category,
-            amount: parseFloat(budget.amount),
-            period: 'monthly',
-            startDate: now,
-            endDate: lastDayOfMonth,
-            notifications: {
-              enabled: true,
-              threshold: 80,
-            },
-          })
-        )
-      );
+      // Only create budgets if the user has added them
+      if (userBudgets.length > 0) {
+        // Create budgets in parallel
+        await Promise.all(
+          userBudgets.map(budget => 
+            budgetService.createBudget({
+              category: budget.category,
+              amount: parseFloat(budget.amount),
+              period: 'monthly',
+              startDate: now,
+              endDate: lastDayOfMonth,
+              notifications: {
+                enabled: true,
+                threshold: 80,
+              },
+            })
+          )
+        );
+        console.log('All budgets successfully saved to server');
+      } else {
+        console.log('No budgets to save, only income was synced');
+      }
       
       // Set flag indicating onboarding is complete
       await AsyncStorage.setItem('has_completed_onboarding', 'true');
@@ -291,13 +291,13 @@ const OnboardingBudgetScreen = () => {
       // Navigate to home screen
       navigation.navigate('Home' as never);
     } catch (error) {
-      console.error('Error saving budgets:', error);
+      console.error('Error during onboarding completion:', error);
       
       // Mark onboarding as complete regardless of error
       await AsyncStorage.setItem('has_completed_onboarding', 'true');
       
       // Identify error type for better UX
-      let errorMessage = 'Failed to save your budgets. You can set them up later from the Budget screen.';
+      let errorMessage = 'Failed to save your information. You can set up your budgets later from the Budget screen.';
       let needsRelogin = false;
       
       // Check for income/budget limit errors
@@ -309,7 +309,7 @@ const OnboardingBudgetScreen = () => {
           errorMessage = 'Your session has expired. Please login again to continue.';
           needsRelogin = true;
         } else if (error.response.status >= 500) {
-          errorMessage = 'Server error. The budgets could not be saved but you can set them up later.';
+          errorMessage = 'Server error. Your information could not be saved but you can set it up later.';
         }
       } else if (error instanceof Error && 
                (error.message.includes('Authentication') || 

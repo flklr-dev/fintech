@@ -14,17 +14,36 @@ const api = axios.create({
 // Add a request interceptor to include auth token
 api.interceptors.request.use(
   async (config) => {
-    // Try to get token from AsyncStorage
-    const token = await AsyncStorage.getItem('auth_token');
-    
-    // If token exists, add it to the request headers
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    try {
+      // Try to get token from AsyncStorage - get the plain token, not the object
+      const tokenObj = await AsyncStorage.getItem('auth_token');
+      let token = tokenObj;
+      
+      // If token exists and is an object (from newer implementations), extract the token
+      try {
+        const parsed = JSON.parse(tokenObj);
+        if (parsed && parsed.token) {
+          token = parsed.token;
+        }
+      } catch (e) {
+        // If it's not JSON, use it as is
+      }
+      
+      // If token exists, add it to the request headers
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        console.log('Adding token to request:', config.url);
+      } else {
+        console.log('No token available for request:', config.url);
+      }
+      
+      console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
+      
+      return config;
+    } catch (error) {
+      console.error('Request interceptor error:', error);
+      return config; // Continue with request even if getting token fails
     }
-    
-    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
-    
-    return config;
   },
   (error) => {
     console.error('Request interceptor error:', error);
@@ -45,6 +64,8 @@ api.interceptors.response.use(
     if (error.response && error.response.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       
+      console.error('Authentication error - clearing token due to 401');
+      
       // Clear token as it's invalid
       await AsyncStorage.removeItem('auth_token');
       await AsyncStorage.removeItem('token_expiry');
@@ -52,10 +73,6 @@ api.interceptors.response.use(
       
       // Clear auth headers
       delete api.defaults.headers.common['Authorization'];
-      
-      // You could implement token refresh logic here if your API supports it
-      
-      // Return to login screen (handled by the auth state in AuthContext)
     }
     
     // Handle specific error cases
@@ -67,16 +84,6 @@ api.interceptors.response.use(
         method: error.config?.method?.toUpperCase(),
         data: error.response.data
       });
-      
-      // Handle 401 unauthorized (e.g., token expired)
-      if (error.response.status === 401) {
-        console.error('Authentication error - user needs to login again');
-        // Clear auth tokens and headers
-        await AsyncStorage.removeItem('auth_token');
-        await AsyncStorage.removeItem('token_expiry');
-        await AsyncStorage.removeItem('user_data');
-        delete api.defaults.headers.common['Authorization'];
-      }
     } else if (error.request) {
       // Request was made but no response received
       console.error('Network error - no response received:', {
@@ -95,14 +102,23 @@ api.interceptors.response.use(
 // Helper methods for token management
 const setAuthToken = (token) => {
   if (token) {
+    console.log('Setting auth token in api instance');
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    // Also store in AsyncStorage - plain token
+    AsyncStorage.setItem('auth_token', token)
+      .then(() => console.log('Token stored in AsyncStorage'))
+      .catch(err => console.error('Failed to store token:', err));
   } else {
     delete api.defaults.headers.common['Authorization'];
   }
 };
 
 const clearAuthToken = () => {
+  console.log('Clearing auth token from api instance');
   delete api.defaults.headers.common['Authorization'];
+  AsyncStorage.removeItem('auth_token')
+    .then(() => console.log('Token removed from AsyncStorage'))
+    .catch(err => console.error('Failed to remove token:', err));
 };
 
 // Attach token management methods to the api object

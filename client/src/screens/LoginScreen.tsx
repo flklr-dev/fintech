@@ -20,6 +20,9 @@ import InputField from '../components/InputField';
 import GoogleButton from '../components/GoogleButton';
 import MessageDialog from '../components/MessageDialog';
 import { authViewModel } from '../viewmodels/authViewModel';
+import { signInWithGoogle } from '../services/googleSignIn';
+import { auth } from '../config/firebase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Define the navigation prop type
 type RootStackParamList = {
@@ -41,6 +44,7 @@ const LoginScreen = observer(() => {
   // Form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   
   // Form validation tracking
   const [touched, setTouched] = useState({
@@ -182,6 +186,49 @@ const LoginScreen = observer(() => {
     setDialogVisible(true);
   };
 
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsLoading(true);
+      const user = await signInWithGoogle();
+      console.log('Google Sign-In Success:', user);
+      
+      // Check if this is a new user or an existing user by looking at metadata
+      const isNewAccount = !user.metadata || user.metadata.creationTime === user.metadata.lastSignInTime;
+      
+      if (isNewAccount) {
+        // This is a new user, mark as just registered and send to onboarding
+        await AsyncStorage.setItem('just_registered', 'true');
+        
+        // Show success dialog for new account
+        showDialog({
+          type: 'success',
+          title: 'Account Created!',
+          message: `Welcome to Fintech App! Your account has been created with ${user.email}`,
+          actionText: 'Get Started',
+          onAction: () => navigation.navigate('OnboardingCurrency' as never),
+        });
+      } else {
+        // This is an existing user, proceed to home
+        showDialog({
+          type: 'success',
+          title: 'Welcome Back!',
+          message: `You've successfully signed in as ${user.email}`,
+          actionText: 'Continue',
+          onAction: () => navigation.navigate('Home'),
+        });
+      }
+    } catch (error) {
+      console.error('Google Sign-In Error:', error);
+      showDialog({
+        type: 'error',
+        title: 'Google Sign-In Failed',
+        message: 'Failed to sign in with Google. Please try again.'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -249,8 +296,9 @@ const LoginScreen = observer(() => {
           </View>
 
           <GoogleButton 
-            onPress={() => promptGoogleAsync()} 
-            isLoading={auth.isLoading}
+            onPress={handleGoogleSignIn} 
+            isLoading={isLoading}
+            label="Continue with Google"
           />
 
           <View style={styles.footer}>

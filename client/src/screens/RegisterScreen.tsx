@@ -22,6 +22,8 @@ import GoogleButton from '../components/GoogleButton';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter';
 import MessageDialog from '../components/MessageDialog';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { signInWithGoogle } from '../services/googleSignIn';
+import { auth } from '../config/firebase';
 
 // Define the navigation prop type
 type RootStackParamList = {
@@ -55,6 +57,7 @@ const RegisterScreen = observer(() => {
 
   // UI states
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   
   // Dialog state
   const [dialogVisible, setDialogVisible] = useState(false);
@@ -307,6 +310,52 @@ const RegisterScreen = observer(() => {
     }
   };
 
+  // Handle Google Sign-In using native Google Sign-In
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsLoading(true);
+      const user = await signInWithGoogle();
+      console.log('Google Sign-In Success:', user);
+      
+      // Check if this is a new user or an existing user by looking for specific fields
+      // This is a best-effort approach since the server doesn't explicitly tells us
+      const isNewAccount = !user.metadata || user.metadata.creationTime === user.metadata.lastSignInTime;
+      
+      if (isNewAccount) {
+        // Set the flag to indicate this is a new registration that needs onboarding
+        await AsyncStorage.setItem('just_registered', 'true');
+        
+        // Show success dialog for new account
+        showDialog({
+          type: 'success',
+          title: 'Account Created!',
+          message: `You've successfully created an account with ${user.email}`,
+          actionText: 'Continue',
+          onAction: () => navigation.navigate('OnboardingCurrency' as never),
+        });
+      } else {
+        // Show message for existing account
+        showDialog({
+          type: 'info',
+          title: 'Account Already Exists',
+          message: `You're already registered with ${user.email}. We've logged you in.`,
+          actionText: 'Continue',
+          onAction: () => navigation.navigate('Home'),
+        });
+      }
+      
+    } catch (error) {
+      console.error('Google Sign-In Error:', error);
+      showDialog({
+        type: 'error',
+        title: 'Google Sign-In Failed',
+        message: 'Failed to sign in with Google. Please try again.'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Helper function to show dialog
   const showDialog = ({ type, title, message, actionText, onAction }: {
     type: 'success' | 'error' | 'warning' | 'info',
@@ -416,9 +465,9 @@ const RegisterScreen = observer(() => {
           </View>
 
           <GoogleButton 
-            onPress={() => promptGoogleAsync()} 
-            isLoading={authViewModel.isLoading}
-            label="Sign up with Google"
+            onPress={handleGoogleSignIn} 
+            isLoading={isLoading}
+            label="Continue with Google"
           />
 
           <View style={styles.footer}>

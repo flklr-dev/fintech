@@ -46,11 +46,16 @@ const axiosInstance: AxiosInstance = axios.create({
 // Request interceptor for adding auth token
 axiosInstance.interceptors.request.use(
   async (config) => {
-    const token = await getValidToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    try {
+      const token = await getValidToken();
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    } catch (error) {
+      console.error('Request interceptor error:', error);
+      return Promise.reject(error);
     }
-    return config;
   },
   (error) => {
     return Promise.reject(error);
@@ -60,28 +65,21 @@ axiosInstance.interceptors.request.use(
 // Response interceptor for handling errors
 axiosInstance.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
-      
-      // Check if this is a password-related error, which we don't want to log to console
-      const responseData = error.response.data as any;
-      const isPasswordError = 
-        responseData?.message?.includes('Current password is incorrect') ||
-        error.config?.url?.includes('change-password');
-      
-      if (error.response.status === 401 && !isPasswordError) {
-        console.error('Authentication error:', error.response.data);
-      } else if (!isPasswordError) {
-        console.error('API error:', error.response.data);
+      if (error.response.status === 401) {
+        // Clear auth data on 401 errors
+        await clearAuthData();
+        // Clear axios headers
+        delete axiosInstance.defaults.headers.common['Authorization'];
+        
+        // If we have a token but still getting 401, it might be invalid
+        const token = await getValidToken();
+        if (token) {
+          console.warn('Token exists but request returned 401, clearing token');
+          await clearAuthData();
+        }
       }
-    } else if (error.request) {
-      // The request was made but no response received
-      console.error('Network error: No response received');
-    } else {
-      // Something happened in setting up the request that triggered an Error
-      console.error('Error setting up request:', error.message);
     }
     return Promise.reject(error);
   }
@@ -108,7 +106,9 @@ const getValidToken = async (): Promise<string | null> => {
       return null;
     }
     
-    // Token is valid
+    // Token is valid, ensure it's set in axios headers
+    axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${tokenData.token}`;
+    
     return tokenData.token;
   } catch (error) {
     console.error('Error getting token:', error);
@@ -154,8 +154,12 @@ export const authService = {
       if (user) {
         await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
       }
+      
+      // Set the token in the axios instance headers
+      axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } catch (error) {
       console.error('Error saving token:', error);
+      throw error;
     }
   },
 
@@ -230,20 +234,47 @@ export const authService = {
     }
   },
 
-  loginWithGoogle: async (googleToken: string): Promise<string> => {
+  loginWithGoogle: async (googleToken: string) => {
     try {
-      const response: AxiosResponse = await axiosInstance.post('/auth/google', { token: googleToken });
-      const { token } = response.data;
-      const user = response.data.data?.user;
+      console.log('Sending Google token to backend for verification');
+      const response = await axiosInstance.post('/auth/google', { token: googleToken });
       
-      // Store token and user data
-      await authService.setToken(token, user);
-      return token;
+      if (response.data.status === 'success') {
+        console.log('Google Sign-In API response success');
+        
+        // Get the plain JWT token
+        const token = response.data.token;
+        const user = response.data.data.user;
+        
+        // Store token directly in AsyncStorage for use by api.js
+        await AsyncStorage.setItem('auth_token', token);
+        console.log('Token stored in AsyncStorage directly');
+        
+        // Also save using secureStorage for other parts of the app
+        await saveSecurely(AUTH_TOKEN_KEY, { token });
+        console.log('Token stored in secure storage');
+        
+        // Set token expiry (24 hours from now)
+        const expiryTime = Date.now() + DEFAULT_TOKEN_EXPIRY;
+        await AsyncStorage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
+        
+        // Save user data if provided
+        if (user) {
+          await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(user));
+        }
+        
+        // Set the token in the axios instance headers
+        axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        console.log('Token added to axios headers');
+        
+        return true;
+      }
+      
+      console.log('Google Sign-In API response failure');
+      return false;
     } catch (error) {
-      const axiosError = error as AxiosError<{message?: string}>;
-      throw new Error(
-        axiosError.response?.data?.message || 'Failed to login with Google. Please try again.'
-      );
+      console.error('Google Sign-In API error:', error);
+      throw error;
     }
   }
 };
