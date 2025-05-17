@@ -39,7 +39,7 @@ const ReportsScreen = observer(() => {
   const [activeScreen, setActiveScreen] = useState<ScreenName>('Reports');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [selectedDateRange, setSelectedDateRange] = useState('This Month');
+  const [selectedDateRange, setSelectedDateRange] = useState('All');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
   // Update the custom date range state
@@ -99,6 +99,16 @@ const ReportsScreen = observer(() => {
 
   // Debounce the custom date range
   const debouncedCustomDateRange = useDebounce(customDateRange, 500);
+
+  // Add number formatting function
+  const formatLargeNumber = (num: number): string => {
+    if (num >= 1000000) {
+      return (num / 1000000).toFixed(2) + 'M';
+    } else if (num >= 1000) {
+      return (num / 1000).toFixed(2) + 'K';
+    }
+    return num.toFixed(2);
+  };
 
   // Update the useEffect for initial load
   useEffect(() => {
@@ -210,6 +220,11 @@ const ReportsScreen = observer(() => {
     let endDate = new Date();
     
     switch (period) {
+      case 'All':
+        // All time: Set start date to a very old date
+        startDate = new Date(2000, 0, 1); // January 1, 2000
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        break;
       case 'Today':
         // Today: transactions from the current day
         startDate.setHours(0, 0, 0, 0);
@@ -237,8 +252,8 @@ const ReportsScreen = observer(() => {
         endDate = customDateRange.endDate;
         break;
       default:
-        // Default to This Month if somehow an invalid period is passed
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        // Default to All if somehow an invalid period is passed
+        startDate = new Date(2000, 0, 1);
         endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     }
     
@@ -409,30 +424,34 @@ const ReportsScreen = observer(() => {
       // Get the date range for the report
       const { startDate, endDate } = getDateRangeForPeriod(selectedDateRange);
       
-      // Create report content
+      // Create a formatted report content
       const reportContent = `
-Financial Report
+📊 Financial Report
 Period: ${format(startDate, 'MMM d, yyyy')} - ${format(endDate, 'MMM d, yyyy')}
 
-Key Metrics:
-• Total Income: ${formatCurrency(totalIncome)}
-• Total Expenses: ${formatCurrency(totalExpense)}
-• Net Savings: ${formatCurrency(netSavings)}
+💰 Key Metrics:
+• Total Income: ${formatCurrency(totalIncome, formatLargeNumber)}
+• Total Expenses: ${formatCurrency(totalExpense, formatLargeNumber)}
+• Net Savings: ${netSavings >= 0 ? '+' : '-'}${formatCurrency(Math.abs(netSavings), formatLargeNumber)}
 
-Spending by Category:
+📈 Spending by Category:
 ${spendingByCategory.map(category => 
-  `• ${category.name}: ${formatCurrency(category.amount)}`
+  `• ${category.name}: ${formatCurrency(category.amount, formatLargeNumber)}`
 ).join('\n')}
 
-Budget Status:
+📋 Budget Status:
 ${budgets.map(budget => {
   const spent = budget.currentSpending || 0;
   const allocated = budget.amount || 0;
   const percentage = allocated > 0 ? (spent / allocated) * 100 : 0;
+  const status = percentage > 100 ? '❌' : percentage >= 80 ? '⚠️' : '✅';
+  
   return `• ${budget.category}:
-  - Spent: ${formatCurrency(spent)} / ${formatCurrency(allocated)}
-  - Utilization: ${percentage.toFixed(1)}%`;
+  - Spent: ${formatCurrency(spent, formatLargeNumber)} / ${formatCurrency(allocated, formatLargeNumber)}
+  - Utilization: ${percentage.toFixed(1)}% ${status}`;
 }).join('\n')}
+
+Generated on: ${format(new Date(), 'MMM d, yyyy h:mm a')}
       `;
 
       // Share the report
@@ -686,29 +705,29 @@ ${budgets.map(budget => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Time Range Selector - Updated styling */}
+        {/* Time Range Selector - Updated with All option */}
         <View style={styles.filterContainer}>
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
           >
-            {['This Week', 'This Month', 'Custom'].map((range) => (
-            <TouchableOpacity
+            {['All', 'This Week', 'This Month', 'Custom'].map((range) => (
+              <TouchableOpacity
                 key={range}
-              style={[
+                style={[
                   styles.filterChip,
                   selectedDateRange === range && styles.activeFilterChip
-              ]}
+                ]}
                 onPress={() => handleDateRangeSelect(range)}
-            >
-              <Text style={[
+              >
+                <Text style={[
                   styles.filterChipText,
                   selectedDateRange === range && styles.activeFilterChipText
-              ]}>
+                ]}>
                   {range}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </ScrollView>
           
           {/* Show selected custom date range when active */}
@@ -734,7 +753,7 @@ ${budgets.map(budget => {
                 <View>
                   <Text style={styles.metricLabel}>Income</Text>
                   <Text style={[styles.metricValue, styles.incomeValue]}>
-                    {formatCurrency(totalIncome)}
+                    {formatCurrency(totalIncome, formatLargeNumber)}
                   </Text>
                 </View>
               </View>
@@ -746,7 +765,7 @@ ${budgets.map(budget => {
                 <View>
                   <Text style={styles.metricLabel}>Expenses</Text>
                   <Text style={[styles.metricValue, styles.expenseValue]}>
-                    {formatCurrency(totalExpense)}
+                    {formatCurrency(totalExpense, formatLargeNumber)}
                   </Text>
                 </View>
               </View>
@@ -761,7 +780,7 @@ ${budgets.map(budget => {
                 <View>
                   <Text style={styles.metricLabel}>Savings</Text>
                   <Text style={[styles.metricValue, netSavings >= 0 ? styles.incomeValue : styles.expenseValue]}>
-                    {netSavings >= 0 ? '+' : '-'}{formatCurrency(Math.abs(netSavings))}
+                    {netSavings >= 0 ? '+' : '-'}{formatCurrency(Math.abs(netSavings), formatLargeNumber)}
                   </Text>
                 </View>
               </View>
@@ -781,7 +800,7 @@ ${budgets.map(budget => {
                   <PieChart
                     data={spendingByCategory.map(category => ({
                       ...category,
-                      legendFontSize: 0, // No legend on chart
+                      legendFontSize: 0,
                     }))}
                     width={180}
                     height={180}
@@ -800,14 +819,10 @@ ${budgets.map(budget => {
                 </View>
               </View>
               
-              {/* Custom legend */}
+              {/* Custom legend with two-column layout */}
               <View style={styles.chartLegendContainer}>
-                <ScrollView 
-                  style={styles.legendScroll}
-                  showsVerticalScrollIndicator={false}
-                >
+                <View style={styles.spendingLegendGrid}>
                   {spendingByCategory.map((category, index) => {
-                    // Calculate percentage
                     const totalSpending = spendingByCategory.reduce(
                       (sum, cat) => sum + cat.amount, 0
                     );
@@ -817,41 +832,31 @@ ${budgets.map(budget => {
                         : '0';
                     
                     return (
-                      <View key={index} style={styles.legendItem}>
-                        <View style={styles.legendRow}>
+                      <View key={index} style={styles.spendingLegendItem}>
+                        <View style={styles.spendingLegendRow}>
                           <View 
                             style={[
-                              styles.legendColorBox, 
+                              styles.spendingLegendColorBox, 
                               { backgroundColor: category.color }
                             ]} 
                           />
-                          <Text style={styles.legendCategoryText} numberOfLines={1}>
+                          <Text style={styles.spendingLegendCategoryText} numberOfLines={1}>
                             {category.name}
                           </Text>
-                          <Text style={styles.legendPercentage}>
+                        </View>
+                        
+                        <View style={styles.spendingLegendDetails}>
+                          <Text style={styles.spendingLegendPercentage}>
                             {percentage}%
                           </Text>
+                          <Text style={styles.spendingLegendAmountText}>
+                            {formatCurrency(category.amount, formatLargeNumber)}
+                          </Text>
                         </View>
-                        
-                        <View style={styles.legendBarContainer}>
-                          <View 
-                            style={[
-                              styles.legendBar,
-                              { 
-                                width: `${Math.min(parseFloat(percentage), 100)}%`,
-                                backgroundColor: category.color
-                              }
-                            ]} 
-                          />
-                        </View>
-                        
-                        <Text style={styles.legendAmountText}>
-                          {formatCurrency(category.amount)}
-                        </Text>
                       </View>
                     );
                   })}
-                </ScrollView>
+                </View>
               </View>
             </View>
           </View>
@@ -896,13 +901,13 @@ ${budgets.map(budget => {
                 }}
               />
               <View style={styles.chartLegend}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: theme.colors.success }]} />
-                  <Text style={styles.legendText}>Income</Text>
+                <View style={styles.chartLegendItem}>
+                  <View style={[styles.chartLegendDot, { backgroundColor: theme.colors.success }]} />
+                  <Text style={styles.chartLegendText}>Income</Text>
                 </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: theme.colors.error }]} />
-                  <Text style={styles.legendText}>Expenses</Text>
+                <View style={styles.chartLegendItem}>
+                  <View style={[styles.chartLegendDot, { backgroundColor: theme.colors.error }]} />
+                  <Text style={styles.chartLegendText}>Expenses</Text>
                 </View>
               </View>
             </View>
@@ -959,7 +964,7 @@ ${budgets.map(budget => {
                         { backgroundColor: categoryColors[budget.category as keyof typeof categoryColors] || '#607D8B' }
                       ]} />
                       <Text style={styles.categoryName}>{budget.category}</Text>
-                      <Text style={styles.budgetAmount}>{formatCurrency(spent)}</Text>
+                      <Text style={styles.budgetAmount}>{formatCurrency(spent, formatLargeNumber)}</Text>
                     </View>
                     <View style={styles.progressBarContainer}>
                       <View 
@@ -981,21 +986,21 @@ ${budgets.map(budget => {
                       <View style={styles.budgetDetails}>
                         <View style={styles.budgetDetailRow}>
                           <Text style={styles.budgetDetailLabel}>Allocated:</Text>
-                          <Text style={styles.budgetDetailValue}>{formatCurrency(allocated)}</Text>
+                          <Text style={styles.budgetDetailValue}>{formatCurrency(allocated, formatLargeNumber)}</Text>
                         </View>
                         <View style={styles.budgetDetailRow}>
                           <Text style={styles.budgetDetailLabel}>Spent:</Text>
                           <Text style={[
                             styles.budgetDetailValue,
                             isOverBudget && styles.redText
-                          ]}>{formatCurrency(spent)}</Text>
+                          ]}>{formatCurrency(spent, formatLargeNumber)}</Text>
                         </View>
                         <View style={styles.budgetDetailRow}>
                           <Text style={styles.budgetDetailLabel}>Remaining:</Text>
                           <Text style={[
                             styles.budgetDetailValue,
                             isOverBudget ? styles.redText : styles.greenText
-                          ]}>{formatCurrency(allocated - spent)}</Text>
+                          ]}>{formatCurrency(allocated - spent, formatLargeNumber)}</Text>
                         </View>
                         <View style={styles.budgetDetailRow}>
                           <Text style={styles.budgetDetailLabel}>Utilization:</Text>
@@ -1328,57 +1333,53 @@ const styles = StyleSheet.create({
   pieWrapper: {
     width: 180,
     height: 180,
-    marginLeft: 50, // Shift the chart to the right
+    marginLeft: 50,
   },
   chartLegendContainer: {
     width: width > 480 ? '50%' : '100%',
     paddingLeft: width > 480 ? 16 : 0,
   },
-  legendScroll: {
-    maxHeight: 180,
+  spendingLegendGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
-  legendItem: {
+  spendingLegendItem: {
+    width: '48%',
     marginBottom: 12,
+    backgroundColor: theme.colors.background,
+    padding: 8,
+    borderRadius: 8,
   },
-  legendRow: {
+  spendingLegendRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
   },
-  legendColorBox: {
-    width: 12,
-    height: 12,
-    borderRadius: 3,
-    marginRight: 8,
+  spendingLegendColorBox: {
+    width: 10,
+    height: 10,
+    borderRadius: 2,
+    marginRight: 6,
   },
-  legendCategoryText: {
-    fontSize: 13,
+  spendingLegendCategoryText: {
+    fontSize: 12,
     color: theme.colors.text,
     flex: 1,
+    marginRight: 4,
   },
-  legendPercentage: {
-    fontSize: 13,
+  spendingLegendDetails: {
+    marginTop: 4,
+    marginLeft: 16,
+  },
+  spendingLegendPercentage: {
+    fontSize: 12,
     fontWeight: '600',
     color: theme.colors.text,
-    width: 45,
-    textAlign: 'right',
   },
-  legendBarContainer: {
-    height: 4,
-    backgroundColor: theme.colors.lightGray,
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginBottom: 4,
-  },
-  legendBar: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  legendAmountText: {
-    fontSize: 12,
-    fontWeight: '500',
+  spendingLegendAmountText: {
+    fontSize: 11,
     color: theme.colors.textLight,
-    textAlign: 'right',
+    marginTop: 2,
   },
   lineChartContainer: {
     alignItems: 'center',
@@ -1388,17 +1389,21 @@ const styles = StyleSheet.create({
   },
   chartLegend: {
     flexDirection: 'row',
-
     justifyContent: 'center',
     marginTop: 8,
   },
-  legendDot: {
+  chartLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 12,
+  },
+  chartLegendDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     marginRight: 4,
   },
-  legendText: {
+  chartLegendText: {
     fontSize: 12,
     color: theme.colors.textLight,
   },

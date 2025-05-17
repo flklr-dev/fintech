@@ -11,7 +11,7 @@ import {
 interface CurrencyContextType {
   currency: CurrencyOption;
   setCurrency: (currencySymbol: string) => Promise<void>;
-  formatCurrency: (amount: number) => string;
+  formatCurrency: (amount: number, formatter?: (num: number) => string) => string;
 }
 
 // Create the context with default values
@@ -62,8 +62,9 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({ children }) 
   };
 
   // Format currency using the current currency settings
-  const formatCurrency = (amount: number): string => {
-    return formatCurrencyUtil(amount, currency);
+  const formatCurrency = (amount: number, formatter?: (num: number) => string): string => {
+    const formattedNumber = formatter ? formatter(amount) : amount.toFixed(2);
+    return `${currency.symbol}${formattedNumber}`;
   };
 
   // Provide loading state or context
