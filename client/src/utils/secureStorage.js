@@ -1,6 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
-// import { STORAGE_KEY } from '@env';
 
 // Use a hardcoded storage key instead of environment variable
 const STORAGE_KEY = 'fintech_app_secure_storage';

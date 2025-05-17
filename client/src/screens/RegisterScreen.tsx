@@ -24,6 +24,7 @@ import MessageDialog from '../components/MessageDialog';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { signInWithGoogle } from '../services/googleSignIn';
 import { auth } from '../config/firebase';
+import useScreenSecurity from '../hooks/useScreenSecurity';
 
 // Define the navigation prop type
 type RootStackParamList = {
@@ -39,6 +40,9 @@ type RootStackParamList = {
 type RegisterScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Register'>;
 
 const RegisterScreen = observer(() => {
+  // Use the screen security hook to prevent screenshots
+  useScreenSecurity(true);
+  
   const navigation = useNavigation<RegisterScreenNavigationProp>();
   
   // Form state

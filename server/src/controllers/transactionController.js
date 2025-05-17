@@ -3,7 +3,21 @@ const Transaction = require('../models/Transaction');
 // Get all transactions for a user
 exports.getAllTransactions = async (req, res) => {
   try {
-    const transactions = await Transaction.find({ user: req.user._id });
+    const { startDate, endDate } = req.query;
+    const query = { user: req.user._id };
+
+    // Add date range filtering if provided
+    if (startDate || endDate) {
+      query.date = {};
+      if (startDate) {
+        query.date.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        query.date.$lte = new Date(endDate);
+      }
+    }
+
+    const transactions = await Transaction.find(query).sort({ date: -1 });
     
     res.status(200).json({
       status: 'success',

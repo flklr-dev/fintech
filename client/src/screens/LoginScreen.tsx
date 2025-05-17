@@ -23,6 +23,7 @@ import { authViewModel } from '../viewmodels/authViewModel';
 import { signInWithGoogle } from '../services/googleSignIn';
 import { auth } from '../config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import useScreenSecurity from '../hooks/useScreenSecurity';
 
 // Define the navigation prop type
 type RootStackParamList = {
@@ -38,6 +39,9 @@ type RootStackParamList = {
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
 
 const LoginScreen = observer(() => {
+  // Use the screen security hook to prevent screenshots
+  useScreenSecurity(true);
+  
   const navigation = useNavigation<LoginScreenNavigationProp>();
   const auth = useAuth();
   
@@ -60,13 +64,6 @@ const LoginScreen = observer(() => {
     message: '',
     actionText: '',
     onAction: () => {},
-  });
-
-  // Google Sign-In
-  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
-    clientId: 'YOUR_WEB_CLIENT_ID',
-    androidClientId: 'YOUR_ANDROID_CLIENT_ID',
-    iosClientId: 'YOUR_IOS_CLIENT_ID',
   });
 
   // Reset auth errors when screen is mounted

@@ -7,6 +7,7 @@ const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
 const budgetRoutes = require('./routes/budgetRoutes');
+const pesoPayRoutes = require('./routes/pesoPayRoutes');
 const rateLimiter = require('./middleware/rateLimit');
 
 // Initialize Express app
@@ -38,6 +39,7 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
 app.use('/api/v1/budgets', budgetRoutes);
+app.use('/api/v1/pesopay', pesoPayRoutes);
 
 // Handle undefined routes
 app.all('*', (req, res) => {

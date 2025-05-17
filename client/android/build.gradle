@@ -13,6 +13,17 @@ buildscript {
     repositories {
         google()
         mavenCentral()
+        gradlePluginPortal()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+        maven {
+            url "https://maven.pkg.github.com/expo/expo"
+            credentials {
+                username = System.getenv("MAVEN_GITHUB_USERNAME") ?: "expo-bot"
+                password = System.getenv("MAVEN_GITHUB_PASSWORD") ?: System.getenv("GITHUB_API_TOKEN") ?: "ghp_A1h6sDnS0KNbSyF3LI5mXjrm2JOdOJ0QDqIL"
+            }
+        }
     }
     dependencies {
         classpath 'com.google.gms:google-services:4.4.1'

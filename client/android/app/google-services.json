@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "615048959288-v70sc2m2mumqkcskeq8auhueq3prg7vr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kitadrian.fintech",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
           "client_id": "615048959288-411ri03eldq6hg0fu7k705f5jr5c0ceu.apps.googleusercontent.com",
           "client_type": 3
         }

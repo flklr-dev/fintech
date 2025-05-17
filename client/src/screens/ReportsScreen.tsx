@@ -11,7 +11,8 @@ import {
   Dimensions,
   Share,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Modal
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { observer } from 'mobx-react';
@@ -27,6 +28,7 @@ import { budgetService } from '../services/budgetService';
 import { useFocusEffect } from '@react-navigation/native';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { useCurrency } from '../contexts/CurrencyContext';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const { width } = Dimensions.get('window');
 const CHART_WIDTH = width - 48;
@@ -37,8 +39,21 @@ const ReportsScreen = observer(() => {
   const [activeScreen, setActiveScreen] = useState<ScreenName>('Reports');
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [selectedPeriod, setSelectedPeriod] = useState('Monthly');
+  const [selectedDateRange, setSelectedDateRange] = useState('This Month');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  
+  // Update the custom date range state
+  const [customDateRange, setCustomDateRange] = useState({
+    startDate: new Date(new Date().setHours(0, 0, 0, 0)),
+    endDate: new Date(new Date().setHours(23, 59, 59, 999)),
+    showStartDatePicker: false,
+    showEndDatePicker: false
+  });
+
+  // Add state for date picker visibility
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerMode, setDatePickerMode] = useState<'start' | 'end'>('start');
+  const [showCustomDateRangeModal, setShowCustomDateRangeModal] = useState(false);
   
   // Data states
   const [spendingByCategory, setSpendingByCategory] = useState<any[]>([]);
@@ -65,15 +80,37 @@ const ReportsScreen = observer(() => {
 
   const { formatCurrency } = useCurrency(); // Use the currency context
 
-  // Use useFocusEffect to refresh data when the screen comes into focus
-  useFocusEffect(
-    React.useCallback(() => {
-      fetchAllData();
+  // Add debounce utility
+  const useDebounce = (value: any, delay: number) => {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+
+    useEffect(() => {
+      const handler = setTimeout(() => {
+        setDebouncedValue(value);
+      }, delay);
+
       return () => {
-        // Cleanup if needed
+        clearTimeout(handler);
       };
-    }, [selectedPeriod])
-  );
+    }, [value, delay]);
+
+    return debouncedValue;
+  };
+
+  // Debounce the custom date range
+  const debouncedCustomDateRange = useDebounce(customDateRange, 500);
+
+  // Update the useEffect for initial load
+  useEffect(() => {
+    fetchAllData();
+  }, []);
+
+  // Update the useEffect for date range changes
+  useEffect(() => {
+    if (!loading && selectedDateRange === 'Custom') {
+      fetchAllData();
+    }
+  }, [selectedDateRange, debouncedCustomDateRange]);
 
   // Improved check for data existence
   useEffect(() => {
@@ -112,15 +149,21 @@ const ReportsScreen = observer(() => {
 
   const fetchTransactionData = async () => {
     try {
-      // Get date range based on selected period
-      const { startDate, endDate } = getDateRangeForPeriod(selectedPeriod);
+      // Get date range based on selected period for other charts
+      const { startDate, endDate } = getDateRangeForPeriod(selectedDateRange);
       
-      console.log(`Fetching transactions for ${selectedPeriod}: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+      // Always get last 6 months for income vs expenses chart
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+      sixMonthsAgo.setHours(0, 0, 0, 0);
+      
+      console.log(`Fetching transactions for ${selectedDateRange}: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+      console.log(`Fetching 6 months data for income vs expenses: ${sixMonthsAgo.toISOString()} to ${endDate.toISOString()}`);
       
       // Fetch transactions within date range
       const response = await api.get('/transactions', {
         params: { 
-          startDate: startDate.toISOString(),
+          startDate: sixMonthsAgo.toISOString(), // Always fetch 6 months of data
           endDate: endDate.toISOString()
         }
       });
@@ -133,10 +176,14 @@ const ReportsScreen = observer(() => {
       const transactions = response.data.data.transactions;
       console.log('Transactions fetched:', transactions.length);
       
-      // Process spending by category data
-      processSpendingByCategory(transactions);
+      // Process spending by category data with filtered date range
+      const filteredTransactions = transactions.filter((t: { date: string }) => {
+        const transDate = new Date(t.date);
+        return transDate >= startDate && transDate <= endDate;
+      });
+      processSpendingByCategory(filteredTransactions);
       
-      // Process income vs expense data
+      // Process income vs expense data with all 6 months data
       processIncomeVsExpenseData(transactions);
       
     } catch (error) {
@@ -163,26 +210,36 @@ const ReportsScreen = observer(() => {
     let endDate = new Date();
     
     switch (period) {
-      case 'Weekly':
-        startDate = new Date(now.setDate(now.getDate() - 7));
-        endDate = new Date();
+      case 'Today':
+        // Today: transactions from the current day
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
         break;
-      case 'Monthly':
-        startDate = startOfMonth(now);
-        endDate = endOfMonth(now);
+      case 'This Week':
+        // This Week: transactions from the current week (Sunday-Saturday)
+        const currentDay = now.getDay(); // 0 = Sunday, 6 = Saturday
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - currentDay); // Go back to Sunday
+        startDate.setHours(0, 0, 0, 0);
+        
+        endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6); // Go forward to Saturday
+        endDate.setHours(23, 59, 59, 999);
         break;
-      case 'Yearly':
-        startDate = new Date(now.getFullYear(), 0, 1);
-        endDate = new Date(now.getFullYear(), 11, 31);
+      case 'This Month':
+        // This Month: transactions from the current calendar month
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
         break;
       case 'Custom':
-        // For now, default to last 3 months
-        startDate = subMonths(startOfMonth(now), 2);
-        endDate = endOfMonth(now);
+        // Custom: use the custom date range
+        startDate = customDateRange.startDate;
+        endDate = customDateRange.endDate;
         break;
       default:
-        startDate = startOfMonth(now);
-        endDate = endOfMonth(now);
+        // Default to This Month if somehow an invalid period is passed
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     }
     
     return { startDate, endDate };
@@ -248,10 +305,29 @@ const ReportsScreen = observer(() => {
   };
 
   const processIncomeVsExpenseData = (transactions: any[]) => {
-    // For monthly/yearly view, group by month
-    // For weekly view, group by day
+    // Get date range based on selected period for metrics
+    const { startDate, endDate } = getDateRangeForPeriod(selectedDateRange);
     
-    // For simplicity, we'll implement monthly view for now
+    // Calculate metrics for current period
+    const currentPeriodIncome = transactions
+      .filter(t => {
+        const transDate = new Date(t.date);
+        return transDate >= startDate && transDate <= endDate && t.type === 'income';
+      })
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const currentPeriodExpense = transactions
+      .filter(t => {
+        const transDate = new Date(t.date);
+        return transDate >= startDate && transDate <= endDate && t.type === 'expense';
+      })
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    // Set the current period metrics
+    setTotalIncome(currentPeriodIncome);
+    setTotalExpense(currentPeriodExpense);
+    
+    // Process 6-month chart data
     const incomeByMonth = new Map<string, number>();
     const expenseByMonth = new Map<string, number>();
     
@@ -267,7 +343,7 @@ const ReportsScreen = observer(() => {
       expenseByMonth.set(monthKey, 0);
     }
     
-    // Process transactions
+    // Process all transactions for the last 6 months
     transactions.forEach(transaction => {
       const date = new Date(transaction.date);
       const monthKey = format(date, 'MMM');
@@ -286,13 +362,6 @@ const ReportsScreen = observer(() => {
     const labels = months;
     const incomeData = months.map(month => incomeByMonth.get(month) || 0);
     const expenseData = months.map(month => expenseByMonth.get(month) || 0);
-    
-    // Calculate totals
-    const totalInc = incomeData.reduce((sum, amount) => sum + amount, 0);
-    const totalExp = expenseData.reduce((sum, amount) => sum + amount, 0);
-    
-    setTotalIncome(totalInc);
-    setTotalExpense(totalExp);
     
     setIncomeVsExpenseData({
       labels,
@@ -335,12 +404,48 @@ const ReportsScreen = observer(() => {
 
   const handleExport = async () => {
     try {
+      setLoading(true);
+      
+      // Get the date range for the report
+      const { startDate, endDate } = getDateRangeForPeriod(selectedDateRange);
+      
+      // Create report content
+      const reportContent = `
+Financial Report
+Period: ${format(startDate, 'MMM d, yyyy')} - ${format(endDate, 'MMM d, yyyy')}
+
+Key Metrics:
+• Total Income: ${formatCurrency(totalIncome)}
+• Total Expenses: ${formatCurrency(totalExpense)}
+• Net Savings: ${formatCurrency(netSavings)}
+
+Spending by Category:
+${spendingByCategory.map(category => 
+  `• ${category.name}: ${formatCurrency(category.amount)}`
+).join('\n')}
+
+Budget Status:
+${budgets.map(budget => {
+  const spent = budget.currentSpending || 0;
+  const allocated = budget.amount || 0;
+  const percentage = allocated > 0 ? (spent / allocated) * 100 : 0;
+  return `• ${budget.category}:
+  - Spent: ${formatCurrency(spent)} / ${formatCurrency(allocated)}
+  - Utilization: ${percentage.toFixed(1)}%`;
+}).join('\n')}
+      `;
+
+      // Share the report
       await Share.share({
-        message: 'Financial Report',
-        title: 'Export Report',
+        message: reportContent,
+        title: 'Financial Report',
       });
+
     } catch (error) {
-      Alert.alert('Error', 'Failed to export report');
+      console.error('Error generating report:', error);
+      Alert.alert('Error', 'Failed to generate financial report');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -354,6 +459,80 @@ const ReportsScreen = observer(() => {
   // Get highest spending category
   const highestSpendingCategory = spendingByCategory[0] || { name: 'None', amount: 0 };
 
+  // Handle navigation to account screen
+  const handleProfilePress = () => {
+    navigation.navigate('Account');
+  };
+
+  // Handle date range selection
+  const handleDateRangeSelect = (range: string) => {
+    if (range === selectedDateRange) return; // Don't do anything if same range selected
+    setSelectedDateRange(range);
+    
+    if (range === 'Custom') {
+      showCustomDateRangePicker();
+    }
+  };
+  
+  // Show custom date range picker modal
+  const showCustomDateRangePicker = () => {
+    // Reset custom date range to current month
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+    
+    setCustomDateRange({
+      startDate: startOfMonth,
+      endDate: endOfMonth,
+      showStartDatePicker: false,
+      showEndDatePicker: false
+    });
+    
+    setShowCustomDateRangeModal(true);
+  };
+  
+  // Update the date picker handlers
+  const handleStartDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      selectedDate.setHours(0, 0, 0, 0);
+      setCustomDateRange(prev => ({
+        ...prev,
+        startDate: selectedDate,
+        endDate: selectedDate > prev.endDate ? selectedDate : prev.endDate
+      }));
+    }
+  };
+
+  const handleEndDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      selectedDate.setHours(23, 59, 59, 999);
+      setCustomDateRange(prev => ({
+        ...prev,
+        endDate: selectedDate,
+        startDate: selectedDate < prev.startDate ? selectedDate : prev.startDate
+      }));
+    }
+  };
+
+  // Update the date button handlers
+  const handleStartDatePress = () => {
+    setDatePickerMode('start');
+    setShowDatePicker(true);
+  };
+
+  const handleEndDatePress = () => {
+    setDatePickerMode('end');
+    setShowDatePicker(true);
+  };
+
+  // Update the modal actions
+  const handleApplyCustomRange = () => {
+    setShowCustomDateRangeModal(false);
+    setSelectedDateRange('Custom');
+  };
+
   // Force check for data in the render function
   const checkHasData = () => {
     const calculatedHasData = 
@@ -365,10 +544,80 @@ const ReportsScreen = observer(() => {
     return calculatedHasData;
   };
 
-  // Handle navigation to account screen
-  const handleProfilePress = () => {
-    navigation.navigate('Account');
-  };
+  // Update the custom date range modal renderer
+  const renderCustomDateRangeModal = () => (
+    <Modal
+      visible={showCustomDateRangeModal}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={() => setShowCustomDateRangeModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Select Date Range</Text>
+            <TouchableOpacity onPress={() => setShowCustomDateRangeModal(false)}>
+              <Ionicons name="close" size={24} color={theme.colors.text} />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.modalContent}>
+            <View style={styles.dateSelectionContainer}>
+              {/* Start Date */}
+              <Text style={styles.inputLabel}>Start Date</Text>
+              <TouchableOpacity
+                style={styles.dateButton}
+                onPress={handleStartDatePress}
+              >
+                <Text style={styles.dateButtonText}>
+                  {format(customDateRange.startDate, 'EEEE, MMM d, yyyy')}
+                </Text>
+                <Ionicons name="calendar-outline" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
+              
+              {/* End Date */}
+              <Text style={styles.inputLabel}>End Date</Text>
+              <TouchableOpacity
+                style={styles.dateButton}
+                onPress={handleEndDatePress}
+              >
+                <Text style={styles.dateButtonText}>
+                  {format(customDateRange.endDate, 'EEEE, MMM d, yyyy')}
+                </Text>
+                <Ionicons name="calendar-outline" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={styles.cancelButton}
+                onPress={() => setShowCustomDateRangeModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.applyButton}
+                onPress={handleApplyCustomRange}
+              >
+                <Text style={styles.applyButtonText}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* Date Picker - Single instance */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={datePickerMode === 'start' ? customDateRange.startDate : customDateRange.endDate}
+          mode="date"
+          display="default"
+          onChange={datePickerMode === 'start' ? handleStartDateChange : handleEndDateChange}
+          maximumDate={new Date()}
+        />
+      )}
+    </Modal>
+  );
 
   // Render loading state
   if (loading) {
@@ -437,25 +686,43 @@ const ReportsScreen = observer(() => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Time Range Selector */}
-        <View style={styles.periodSelector}>
-          {['Weekly', 'Monthly', 'Yearly', 'Custom'].map((period) => (
+        {/* Time Range Selector - Updated styling */}
+        <View style={styles.filterContainer}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+          >
+            {['This Week', 'This Month', 'Custom'].map((range) => (
             <TouchableOpacity
-              key={period}
+                key={range}
               style={[
-                styles.periodButton,
-                selectedPeriod === period && styles.selectedPeriod
+                  styles.filterChip,
+                  selectedDateRange === range && styles.activeFilterChip
               ]}
-              onPress={() => setSelectedPeriod(period)}
+                onPress={() => handleDateRangeSelect(range)}
             >
               <Text style={[
-                styles.periodText,
-                selectedPeriod === period && styles.selectedPeriodText
+                  styles.filterChipText,
+                  selectedDateRange === range && styles.activeFilterChipText
               ]}>
-                {period}
+                  {range}
               </Text>
             </TouchableOpacity>
           ))}
+          </ScrollView>
+          
+          {/* Show selected custom date range when active */}
+          {selectedDateRange === 'Custom' && (
+            <View style={styles.customRangeDisplay}>
+              <Ionicons name="calendar" size={16} color={theme.colors.primary} />
+              <Text style={styles.customRangeText}>
+                {format(customDateRange.startDate, 'MMM d')} - {format(customDateRange.endDate, 'MMM d, yyyy')}
+              </Text>
+              <TouchableOpacity onPress={showCustomDateRangePicker}>
+                <Text style={styles.customRangeChangeBtn}>Change</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Key Metrics */}
@@ -769,6 +1036,9 @@ const ReportsScreen = observer(() => {
         </View>
       </ScrollView>
       
+      {/* Replace the old modal with the new renderer */}
+      {renderCustomDateRangeModal()}
+      
       <BottomNavBar activeScreen={activeScreen} onPress={handleNavigation} />
     </SafeAreaView>
   );
@@ -808,29 +1078,48 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  periodSelector: {
-    flexDirection: 'row',
+  filterContainer: {
     paddingHorizontal: 16,
     marginBottom: 16,
   },
-  periodButton: {
-    flex: 1,
+  filterChip: {
     paddingVertical: 8,
-    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginRight: 8,
+    borderRadius: 20,
     backgroundColor: theme.colors.lightGray,
-    marginHorizontal: 4,
-    borderRadius: 8,
   },
-  selectedPeriod: {
+  activeFilterChip: {
     backgroundColor: theme.colors.primary,
   },
-  periodText: {
+  filterChipText: {
     fontSize: 14,
     color: theme.colors.textLight,
   },
-  selectedPeriodText: {
+  activeFilterChipText: {
     color: theme.colors.white,
     fontWeight: '500',
+  },
+  customRangeDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginTop: 12,
+  },
+  customRangeText: {
+    fontSize: 14,
+    color: theme.colors.text,
+    fontWeight: '500',
+    marginLeft: 6,
+    marginRight: 10,
+  },
+  customRangeChangeBtn: {
+    fontSize: 13,
+    color: theme.colors.primary,
+    fontWeight: '600',
   },
   metricsContainer: {
     paddingHorizontal: 16,
@@ -1165,7 +1454,87 @@ const styles = StyleSheet.create({
     color: theme.colors.white,
     fontWeight: '600',
     marginLeft: 8,
-  }
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    backgroundColor: theme.colors.white,
+    borderRadius: 16,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+    zIndex: 1, // Ensure modal is above other content
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  modalContent: {
+    marginBottom: 20,
+  },
+  dateSelectionContainer: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 14,
+    color: theme.colors.text,
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    backgroundColor: theme.colors.background,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.lightGray,
+  },
+  dateButtonText: {
+    fontSize: 14,
+    color: theme.colors.text,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  cancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.lightGray,
+  },
+  cancelButtonText: {
+    color: theme.colors.textLight,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  applyButton: {
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  applyButtonText: {
+    color: theme.colors.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });
 
-export default ReportsScreen; export default ReportsScreen; 
+export default ReportsScreen; 

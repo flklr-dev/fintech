@@ -20,7 +20,6 @@ export interface UserProfile {
   email: string;
   role?: string;
   createdAt?: string;
-  // Add other user profile fields as needed
 }
 
 export interface ChangePasswordRequest {

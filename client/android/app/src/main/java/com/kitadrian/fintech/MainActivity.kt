@@ -2,6 +2,7 @@ package com.kitadrian.fintech
 
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -16,6 +17,13 @@ class MainActivity : ReactActivity() {
     // coloring the background, status bar, and navigation bar.
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
+    
+    // Prevent screenshots and screen recordings for security
+    window.setFlags(
+      WindowManager.LayoutParams.FLAG_SECURE,
+      WindowManager.LayoutParams.FLAG_SECURE
+    )
+    
     super.onCreate(null)
   }
 
@@ -59,3 +67,4 @@ class MainActivity : ReactActivity() {
       super.invokeDefaultOnBackPressed()
   }
 }
+ 

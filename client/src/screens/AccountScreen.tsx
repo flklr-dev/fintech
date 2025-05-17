@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -30,6 +30,8 @@ import BottomNavBar from '../components/BottomNavBar';
 import { ScreenName } from '../components/BottomNavBar';
 import { useCurrency } from '../contexts/CurrencyContext';
 import { SUPPORTED_CURRENCIES } from '../utils/currencyUtils';
+import pesoPayService, { BankCard, BankAccount, LinkAccountRequest } from '../services/pesoPayService';
+import { Picker } from '@react-native-picker/picker';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 const { width, height } = Dimensions.get('window');
@@ -41,8 +43,6 @@ const AccountScreen = () => {
   const { currency, setCurrency } = useCurrency();
   
   // App preferences state
-  const [notifications, setNotifications] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
   
@@ -82,6 +82,26 @@ const AccountScreen = () => {
   const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | 'very-strong' | null>(null);
   const [changingPassword, setChangingPassword] = useState(false);
   const [lastPasswordChange, setLastPasswordChange] = useState<Date | null>(null);
+  
+  // Bank card and account state
+  const [linkedCards, setLinkedCards] = useState<BankCard[]>([]);
+  const [showAddCardModal, setShowAddCardModal] = useState(false);
+  const [newCard, setNewCard] = useState({
+    cardNumber: '',
+    cardholderName: '',
+    expiryDate: '',
+    cvv: '',
+    bankName: ''
+  });
+  const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
+  const [isCardValid, setIsCardValid] = useState(false);
+  const [detectedCardType, setDetectedCardType] = useState<'VISA' | 'MASTERCARD' | null>(null);
+  
+  // Add loading state for card and account operations
+  const [addingCard, setAddingCard] = useState(false);
+  
+  // Add state for card validation feedback
+  const [validationMessage, setValidationMessage] = useState<string | null>(null);
   
   // Fetch user profile data
   useEffect(() => {
@@ -447,6 +467,273 @@ const AccountScreen = () => {
     return currency.name;
   };
   
+  // Fetch linked cards
+  useEffect(() => {
+    fetchLinkedCards();
+  }, []);
+  
+  const fetchLinkedCards = async () => {
+    try {
+      const cards = await pesoPayService.getLinkedCards();
+      
+      // Validate that cards is an array
+      if (!Array.isArray(cards)) {
+        console.error('Invalid cards response:', cards);
+        setLinkedCards([]);
+        return;
+      }
+      
+      // Transform the card data structure to match our expected schema
+      const transformedCards = cards.map(card => {
+        // Map _id to id if id doesn't exist but _id does
+        if (card._id && !card.id) {
+          return {
+            ...card,
+            id: card._id
+          };
+        }
+        return card;
+      });
+      
+      // Log the transformed card data for debugging
+      console.log('Transformed cards data:', JSON.stringify(transformedCards));
+      
+      setLinkedCards(transformedCards);
+    } catch (error) {
+      console.error('Error fetching linked cards:', error);
+      setLinkedCards([]);
+    }
+  };
+  
+  // Update the formatCardNumber function for even better handling
+  const formatCardNumber = (input: string): string => {
+    // Remove all non-digit characters first
+    const digitsOnly = input.replace(/\D/g, '');
+    
+    // Limit to exactly 16 digits maximum
+    const truncated = digitsOnly.slice(0, 16);
+    
+    // Format in groups of 4 with spaces
+    let formatted = '';
+    for (let i = 0; i < truncated.length; i++) {
+      // Add space after every 4 digits
+      if (i > 0 && i % 4 === 0) {
+        formatted += ' ';
+      }
+      formatted += truncated[i];
+    }
+    
+    return formatted;
+  };
+
+  // Check if card already exists to prevent duplicates
+  const isCardAlreadyLinked = (cardNumber: string): boolean => {
+    const normalizedNumber = cardNumber.replace(/\s/g, '');
+    
+    return linkedCards.some(card => {
+      // For security, we only have the last 4 digits, so we check those
+      const lastFour = normalizedNumber.slice(-4);
+      return card.lastFourDigits === lastFour;
+    });
+  };
+
+  // Detect card type based on first digit
+  const detectCardType = (cardNumber: string): 'VISA' | 'MASTERCARD' | null => {
+    const digits = cardNumber.replace(/\D/g, '');
+    
+    if (digits.startsWith('4')) {
+      return 'VISA';
+    } else if (digits.startsWith('5')) {
+      return 'MASTERCARD';
+    }
+    
+    return null;
+  };
+
+  // Validate card number using Luhn algorithm
+  const validateCardNumber = (cardNumber: string): boolean => {
+    const digits = cardNumber.replace(/\D/g, '');
+    
+    // Check card type first (only accept VISA and MASTERCARD)
+    const cardType = detectCardType(digits);
+    if (!cardType) {
+      return false;
+    }
+    
+    // Basic length check
+    if (digits.length < 15 || digits.length > 16) {
+      return false;
+    }
+    
+    // Luhn algorithm
+    let sum = 0;
+    let isEven = false;
+    
+    for (let i = digits.length - 1; i >= 0; i--) {
+      let digit = parseInt(digits[i]);
+      
+      if (isEven) {
+        digit *= 2;
+        if (digit > 9) {
+          digit -= 9;
+        }
+      }
+      
+      sum += digit;
+      isEven = !isEven;
+    }
+    
+    return sum % 10 === 0;
+  };
+
+  // Format expiry date as MM/YY
+  const formatExpiryDate = (text: string): string => {
+    const digits = text.replace(/\D/g, '');
+    
+    if (digits.length <= 2) {
+      return digits;
+    }
+    
+    return `${digits.substring(0, 2)}/${digits.substring(2, 4)}`;
+  };
+
+  // Show a helpful info dialog about card usage in the app
+  const showCardInfoDialog = () => {
+    showConfirmDialog({
+      type: 'info',
+      title: 'Card Transactions',
+      message: 'When you add a card, all transactions made with this card will be automatically reflected in your transaction history. This helps you track your spending and stay on budget.',
+      actionText: 'Got it',
+    });
+  };
+  
+  const handleAddCard = async () => {
+    try {
+      // Set loading state
+      setAddingCard(true);
+      
+      // Reset previous errors
+      const errors: Record<string, string> = {};
+      
+      // Validate card data
+      const cleanCardNumber = newCard.cardNumber.replace(/\s/g, '');
+      
+      if (!cleanCardNumber) {
+        errors.cardNumber = 'Card number is required';
+      } else if (!validateCardNumber(cleanCardNumber)) {
+        errors.cardNumber = 'Invalid card number. Only Visa and Mastercard are accepted.';
+      } else if (isCardAlreadyLinked(cleanCardNumber)) {
+        errors.cardNumber = 'This card is already linked to your account';
+      }
+      
+      if (!newCard.cardholderName) {
+        errors.cardholderName = 'Cardholder name is required';
+      }
+      
+      if (!newCard.expiryDate) {
+        errors.expiryDate = 'Expiry date is required';
+      } else {
+        // Validate MM/YY format
+        const regex = /^(0[1-9]|1[0-2])\/([0-9]{2})$/;
+        if (!regex.test(newCard.expiryDate)) {
+          errors.expiryDate = 'Invalid format. Use MM/YY';
+        } else {
+          // Check if expired
+          const [month, year] = newCard.expiryDate.split('/');
+          const currentDate = new Date();
+          const currentYear = currentDate.getFullYear() % 100;
+          const currentMonth = currentDate.getMonth() + 1;
+          
+          if (parseInt(year) < currentYear || 
+              (parseInt(year) === currentYear && parseInt(month) < currentMonth)) {
+            errors.expiryDate = 'Card has expired';
+          }
+        }
+      }
+      
+      if (!newCard.cvv) {
+        errors.cvv = 'CVV is required';
+      } else if (!/^\d{3,4}$/.test(newCard.cvv)) {
+        errors.cvv = 'CVV must be 3 or 4 digits';
+      }
+      
+      // Bank name is now required (as per server validation)
+      if (!newCard.bankName) {
+        errors.bankName = 'Bank name is required';
+      }
+      
+      if (Object.keys(errors).length > 0) {
+        setCardErrors(errors);
+        return;
+      }
+      
+      // Prepare card data with clean number
+      const cardData = {
+        ...newCard,
+        cardNumber: cleanCardNumber
+      };
+      
+      await pesoPayService.linkCard(cardData);
+      setShowAddCardModal(false);
+      setNewCard({
+        cardNumber: '',
+        cardholderName: '',
+        expiryDate: '',
+        cvv: '',
+        bankName: ''
+      });
+      setDetectedCardType(null);
+      setIsCardValid(false);
+      fetchLinkedCards();
+      
+      // Show enhanced success message
+      showConfirmDialog({
+        type: 'success',
+        title: 'Card Added Successfully',
+        message: 'Your card has been added and all transactions made with this card will now be tracked automatically.',
+        actionText: 'Great!',
+      });
+    } catch (error) {
+      console.error('Error adding card:', error);
+      Alert.alert('Error', 'Failed to add card. Please try again.');
+    } finally {
+      setAddingCard(false);
+    }
+  };
+  
+  const handleRemoveCard = async (cardId: string) => {
+    // Show confirmation dialog first
+    showConfirmDialog({
+      type: 'warning',
+      title: 'Remove Card',
+      message: 'Are you sure you want to remove this card? This action cannot be undone.',
+      actionText: 'Remove',
+      onAction: async () => {
+        try {
+          // Validate card ID is present
+          if (!cardId) {
+            console.error('Cannot remove card: invalid card ID');
+            Alert.alert('Error', 'Could not remove card. Invalid card ID.');
+        return;
+      }
+      
+      await pesoPayService.removeCard(cardId);
+      fetchLinkedCards();
+          
+          // Show success message
+          showConfirmDialog({
+            type: 'success',
+            title: 'Card Removed',
+            message: 'Your card has been removed successfully.',
+          });
+    } catch (error) {
+      console.error('Error removing card:', error);
+      Alert.alert('Error', 'Failed to remove card. Please try again.');
+    }
+      },
+    });
+  };
+
   // Render loading state
   if (loading && !refreshing) {
     return (
@@ -490,7 +777,7 @@ const AccountScreen = () => {
           </View>
         ) : (
           <>
-            {/* Profile Info (modern, centered, with icon) */}
+            {/* Profile Info */}
             <View style={styles.profileInfoContainer}>
               <Ionicons name="person-circle" size={64} color={theme.colors.primary} style={styles.profileIcon} />
               <Text style={styles.userName}>{user?.name || 'User'}</Text>
@@ -500,13 +787,66 @@ const AccountScreen = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Section label */}
-            <Text style={styles.sectionLabel}>Settings</Text>
+            {/* Payment Methods Section */}
+            <Text style={styles.sectionLabel}>Payment Methods</Text>
 
-            {/* Settings Sections */}
-            <View style={styles.settingsContainer}>
-              {/* Account Section */}
+            {/* Linked Cards */}
               <View style={styles.settingsSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Payment Cards</Text>
+                <View style={styles.headerActions}>
+                  <TouchableOpacity
+                    style={styles.infoButton}
+                    onPress={showCardInfoDialog}
+                  >
+                    <Ionicons name="information-circle-outline" size={22} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.addButton}
+                    onPress={() => setShowAddCardModal(true)}
+                  >
+                    <Ionicons name="add-circle-outline" size={24} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              {linkedCards.map((card, index) => (
+                <View key={card.id || `card-${index}`} style={styles.cardItem}>
+                  <View style={styles.cardInfo}>
+                    <View style={styles.cardTypeContainer}>
+                      <Ionicons
+                        name={card.cardType === 'VISA' ? 'card' : 'card-outline'}
+                        size={24}
+                        color={card.cardType === 'VISA' ? '#1A1F71' : '#EB001B'}
+                        style={styles.settingsIcon}
+                      />
+                      <Text style={styles.cardType}>{card.cardType}</Text>
+                    </View>
+                    <Text style={styles.cardNumber}>•••• {card.lastFourDigits}</Text>
+                    <Text style={styles.cardName}>{card.cardholderName}</Text>
+                  </View>
+                  
+                  <View style={styles.cardActions}>
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => card.id ? handleRemoveCard(card.id) : Alert.alert('Error', 'Cannot remove this card.')}
+                    >
+                      <Ionicons name="trash-outline" size={20} color={theme.colors.error} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+              
+              {linkedCards.length === 0 && (
+                <Text style={styles.emptyText}>No cards linked</Text>
+              )}
+            </View>
+            
+            {/* Account Settings Section */}
+            <Text style={styles.sectionLabel}>Account Settings</Text>
+            
+            <View style={styles.settingsSection}>
+              {/* Security Settings */}
                 <TouchableOpacity
                   style={styles.settingsItem}
                   onPress={handleChangePassword}
@@ -526,45 +866,8 @@ const AccountScreen = () => {
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.settingsItem}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.settingsItemLeft}>
-                    <Ionicons name="mail-outline" size={22} color="#4CAF50" style={styles.settingsIcon} />
-                    <View style={styles.settingsItemContent}>
-                      <Text style={styles.settingsItemText}>Email Notifications</Text>
-                      <Text style={styles.settingsItemSubtext}>Receive alerts and updates via email</Text>
-                    </View>
-                  </View>
-                  <Switch
-                    trackColor={{ false: theme.colors.lightGray, true: `${theme.colors.primary}80` }}
-                    thumbColor={notifications ? theme.colors.primary : '#f4f3f4'}
-                    ios_backgroundColor="#3e3e3e"
-                    onValueChange={() => setNotifications(!notifications)}
-                    value={notifications}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              {/* Appearance Section */}
-              <View style={styles.settingsSection}>
-                <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7}>
-                  <View style={styles.settingsItemLeft}>
-                    <Ionicons name="moon-outline" size={22} color="#FFC107" style={styles.settingsIcon} />
-                    <View style={styles.settingsItemContent}>
-                      <Text style={styles.settingsItemText}>Dark Mode</Text>
-                      <Text style={styles.settingsItemSubtext}>Switch to dark theme</Text>
-                    </View>
-                  </View>
-                  <Switch
-                    trackColor={{ false: theme.colors.lightGray, true: `${theme.colors.primary}80` }}
-                    thumbColor={darkMode ? theme.colors.primary : '#f4f3f4'}
-                    ios_backgroundColor="#3e3e3e"
-                    onValueChange={() => setDarkMode(!darkMode)}
-                    value={darkMode}
-                  />
-                </TouchableOpacity>
+              
+              {/* Biometric Login */}
                 <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7}>
                   <View style={styles.settingsItemLeft}>
                     <Ionicons name="finger-print-outline" size={22} color="#00BCD4" style={styles.settingsIcon} />
@@ -581,10 +884,8 @@ const AccountScreen = () => {
                     value={biometricEnabled}
                   />
                 </TouchableOpacity>
-              </View>
 
-              {/* Currency Section */}
-              <View style={styles.settingsSection}>
+              {/* Currency Selection */}
                 <TouchableOpacity 
                   style={styles.settingsItem} 
                   activeOpacity={0.7}
@@ -601,7 +902,9 @@ const AccountScreen = () => {
                 </TouchableOpacity>
               </View>
 
-              {/* Help & Support Section */}
+            {/* Help & Support Section */}
+            <Text style={styles.sectionLabel}>Help & Support</Text>
+            
               <View style={styles.settingsSection}>
                 <TouchableOpacity style={styles.settingsItem} onPress={navigateToContactSupport} activeOpacity={0.7}>
                   <View style={styles.settingsItemLeft}>
@@ -624,7 +927,6 @@ const AccountScreen = () => {
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
                 </TouchableOpacity>
-              </View>
             </View>
 
             {/* Sign Out Button */}
@@ -637,6 +939,7 @@ const AccountScreen = () => {
         )}
       </ScrollView>
       <BottomNavBar activeScreen={activeScreen} onPress={handleNavigation} />
+      
       {/* Edit Profile Modal */}
       {showEditModal && (
         <View style={styles.modalOverlay}>
@@ -879,6 +1182,219 @@ const AccountScreen = () => {
           </View>
         </View>
       )}
+
+      {/* Add Card Modal */}
+      {showAddCardModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Card</Text>
+              <TouchableOpacity
+                onPress={() => setShowAddCardModal(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalBody}>
+              <View style={styles.infoBox}>
+                <Ionicons name="information-circle" size={20} color={theme.colors.primary} style={{marginRight: 8}} />
+                <Text style={styles.infoText}>
+                  Transactions made with this card will be automatically tracked in your transaction history.
+                </Text>
+              </View>
+              
+              <Text style={styles.inputLabel}>Card Number</Text>
+              <View style={styles.cardInputContainer}>
+                {detectedCardType && (
+                  <Ionicons 
+                    name={detectedCardType === 'VISA' ? 'card' : 'card-outline'} 
+                    size={24} 
+                    color={detectedCardType === 'VISA' ? '#1A1F71' : '#EB001B'} 
+                    style={styles.cardTypeIcon}
+                  />
+                )}
+              <TextInput
+                  style={[
+                    styles.input, 
+                    cardErrors.cardNumber && styles.inputError,
+                    detectedCardType && styles.inputWithIcon,
+                    isCardValid && styles.inputValid
+                  ]}
+                value={newCard.cardNumber}
+                onChangeText={(text) => {
+                    // Skip processing if text contains invalid characters
+                    if (!/^[\d\s]*$/.test(text) && text !== '') {
+                      return;
+                    }
+                    
+                    // Format the card number properly (this also handles cleaning)
+                    const formattedText = formatCardNumber(text);
+                    
+                    // Guard against strange input by ensuring we only update with valid format
+                    if (formattedText !== newCard.cardNumber || text === '') {
+                      // Update card state
+                      setNewCard(prev => ({ ...prev, cardNumber: formattedText }));
+                    }
+                    
+                    // Only continue validation if we have a value
+                    if (formattedText) {
+                      // Clear previous errors
+                      setCardErrors(prev => ({ ...prev, cardNumber: '' }));
+                      
+                      // Get clean number for validation
+                      const cleanNumber = formattedText.replace(/\s/g, '');
+                      
+                      // Check for duplicates - early detection
+                      const isDuplicate = isCardAlreadyLinked(cleanNumber);
+                      if (isDuplicate && cleanNumber.length >= 4) {
+                        setValidationMessage('This card is already linked to your account');
+                        setIsCardValid(false);
+                        return;
+                      }
+                      
+                      // Detect card type
+                      const cardType = detectCardType(cleanNumber);
+                      setDetectedCardType(cardType);
+                      
+                      // Validate the card number
+                      const isValid = validateCardNumber(cleanNumber);
+                      setIsCardValid(isValid);
+                      
+                      // Set appropriate validation message
+                      if (cleanNumber.length === 0) {
+                        setValidationMessage(null);
+                      } else if (cardType === null) {
+                        setValidationMessage('Only Visa and Mastercard are accepted');
+                      } else if (cleanNumber.length < 16) {
+                        setValidationMessage('Please enter all 16 digits');
+                      } else if (isValid) {
+                        setValidationMessage('Valid card number');
+                      } else {
+                        setValidationMessage('Invalid card number');
+                      }
+                    } else {
+                      // Reset state if input is empty
+                      setValidationMessage(null);
+                      setDetectedCardType(null);
+                      setIsCardValid(false);
+                    }
+                  }}
+                  placeholder="XXXX XXXX XXXX XXXX"
+                keyboardType="numeric"
+                  maxLength={19} // 16 digits + 3 spaces
+                  autoComplete="cc-number"
+              />
+              </View>
+              {cardErrors.cardNumber && (
+                <Text style={styles.errorText}>{cardErrors.cardNumber}</Text>
+              )}
+              {!cardErrors.cardNumber && validationMessage && (
+                <Text 
+                  style={[
+                    styles.validationText,
+                    validationMessage === 'Valid card number' ? styles.validText : styles.warningText
+                  ]}
+                >
+                  {validationMessage}
+                </Text>
+              )}
+              {detectedCardType && !cardErrors.cardNumber && (
+                <Text style={styles.cardTypeText}>
+                  {detectedCardType === 'VISA' ? 'Visa' : 'Mastercard'} card detected
+                </Text>
+              )}
+              
+              <Text style={styles.inputLabel}>Cardholder Name</Text>
+              <TextInput
+                style={[styles.input, cardErrors.cardholderName && styles.inputError]}
+                value={newCard.cardholderName}
+                onChangeText={(text) => {
+                  setNewCard(prev => ({ ...prev, cardholderName: text }));
+                  if (text) setCardErrors(prev => ({ ...prev, cardholderName: '' }));
+                }}
+                placeholder="Enter cardholder name"
+                autoCapitalize="words"
+              />
+              {cardErrors.cardholderName && (
+                <Text style={styles.errorText}>{cardErrors.cardholderName}</Text>
+              )}
+              
+                  <Text style={styles.inputLabel}>Expiry Date</Text>
+                  <TextInput
+                    style={[styles.input, cardErrors.expiryDate && styles.inputError]}
+                    value={newCard.expiryDate}
+                    onChangeText={(text) => {
+                  // Format expiry date
+                  const formattedText = formatExpiryDate(text);
+                  
+                  setNewCard(prev => ({ ...prev, expiryDate: formattedText }));
+                  if (formattedText) setCardErrors(prev => ({ ...prev, expiryDate: '' }));
+                    }}
+                    placeholder="MM/YY"
+                keyboardType="numeric"
+                    maxLength={5}
+                  />
+                  {cardErrors.expiryDate && (
+                    <Text style={styles.errorText}>{cardErrors.expiryDate}</Text>
+                  )}
+                
+                  <Text style={styles.inputLabel}>CVV</Text>
+                  <TextInput
+                    style={[styles.input, cardErrors.cvv && styles.inputError]}
+                    value={newCard.cvv}
+                    onChangeText={(text) => {
+                      setNewCard(prev => ({ ...prev, cvv: text }));
+                      if (text) setCardErrors(prev => ({ ...prev, cvv: '' }));
+                    }}
+                    placeholder="CVV"
+                    keyboardType="numeric"
+                    maxLength={4}
+                    secureTextEntry
+                  />
+                  {cardErrors.cvv && (
+                    <Text style={styles.errorText}>{cardErrors.cvv}</Text>
+                  )}
+              
+              <Text style={styles.inputLabel}>Bank Name</Text>
+              <TextInput
+                style={[styles.input, cardErrors.bankName && styles.inputError]}
+                value={newCard.bankName}
+                onChangeText={(text) => {
+                  setNewCard(prev => ({ ...prev, bankName: text }));
+                  if (text) setCardErrors(prev => ({ ...prev, bankName: '' }));
+                }}
+                placeholder="Enter bank name"
+              />
+              {cardErrors.bankName && (
+                <Text style={styles.errorText}>{cardErrors.bankName}</Text>
+              )}
+            </View>
+            
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowAddCardModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.saveButton}
+                onPress={handleAddCard}
+                disabled={addingCard}
+              >
+                {addingCard ? (
+                  <ActivityIndicator size="small" color={theme.colors.white} />
+                ) : (
+                <Text style={styles.saveButtonText}>Add Card</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -932,7 +1448,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   
-  // Profile Info (modern, centered, with icon)
+  // Profile Info
   profileInfoContainer: {
     alignItems: 'center',
     paddingTop: 32,
@@ -1229,6 +1745,137 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.colors.text,
   },
-});
+  
+  // Payment Methods Section
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: theme.colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.lightGray,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  addButton: {
+    padding: 4,
+  },
+  cardItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: theme.colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.lightGray,
+  },
+  cardInfo: {
+    flex: 1,
+  },
+  cardTypeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  cardType: {
+    fontSize: 14,
+    color: theme.colors.textLight,
+    marginLeft: 8,
+  },
+  cardNumber: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: theme.colors.text,
+    marginBottom: 4,
+  },
+  cardName: {
+    fontSize: 14,
+    color: theme.colors.textLight,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionButton: {
+    padding: 8,
+    marginLeft: 8,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  halfInput: {
+    width: '48%',
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: theme.colors.lightGray,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  picker: {
+    height: 48,
+  },
+  cardInputContainer: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  cardTypeIcon: {
+    position: 'absolute',
+    left: 12,
+    zIndex: 1,
+  },
+  inputWithIcon: {
+    paddingLeft: 44,
+  },
+  cardTypeText: {
+    fontSize: 12,
+    color: theme.colors.success,
+    marginTop: 4,
+    marginLeft: 2,
+  },
+  inputValid: {
+    borderColor: theme.colors.success,
+  },
+  validationText: {
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 2,
+  },
+  validText: {
+    color: theme.colors.success,
+  },
+  warningText: {
+    color: theme.colors.warning,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  infoButton: {
+    padding: 8,
+    marginRight: 4,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(66, 133, 244, 0.1)',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 14,
+    color: theme.colors.text,
+    lineHeight: 20,
+  },
+} as const);
 
 export default AccountScreen; 
