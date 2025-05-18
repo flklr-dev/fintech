@@ -712,22 +712,22 @@ Generated on: ${format(new Date(), 'MMM d, yyyy h:mm a')}
             showsHorizontalScrollIndicator={false}
           >
             {['All', 'This Week', 'This Month', 'Custom'].map((range) => (
-              <TouchableOpacity
+            <TouchableOpacity
                 key={range}
-                style={[
+              style={[
                   styles.filterChip,
                   selectedDateRange === range && styles.activeFilterChip
-                ]}
+              ]}
                 onPress={() => handleDateRangeSelect(range)}
-              >
-                <Text style={[
+            >
+              <Text style={[
                   styles.filterChipText,
                   selectedDateRange === range && styles.activeFilterChipText
-                ]}>
+              ]}>
                   {range}
-                </Text>
-              </TouchableOpacity>
-            ))}
+              </Text>
+            </TouchableOpacity>
+          ))}
           </ScrollView>
           
           {/* Show selected custom date range when active */}
@@ -851,7 +851,7 @@ Generated on: ${format(new Date(), 'MMM d, yyyy h:mm a')}
                           </Text>
                           <Text style={styles.spendingLegendAmountText}>
                             {formatCurrency(category.amount, formatLargeNumber)}
-                          </Text>
+                        </Text>
                         </View>
                       </View>
                     );

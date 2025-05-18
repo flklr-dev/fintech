@@ -35,6 +35,7 @@ type RootStackParamList = {
   Transactions: undefined;
   Goals: undefined;
   Reports: undefined;
+  OTPVerification: { userId: string; email: string };
 };
 
 type RegisterScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Register'>;
@@ -269,28 +270,38 @@ const RegisterScreen = observer(() => {
       return;
     }
     
+    setIsLoading(true);
+    
+    try {
     // Attempt registration
-    const success = await authViewModel.register(
+      const result = await authViewModel.register(
       { name, email, password },
       confirmPassword
     );
     
-    if (success) {
-      // Set the flag to indicate this is a new registration that needs onboarding
-      await AsyncStorage.setItem('just_registered', 'true');
-      
+      if (result) {
+        // Navigate to OTP verification screen
+        navigation.navigate('OTPVerification', {
+          userId: result.userId,
+          email: result.email
+        });
+      } else {
+        // This should not happen with the new flow, but handle it just in case
       showDialog({
         type: 'success',
         title: 'Registration Successful',
         message: 'Your account has been created successfully.',
-        onAction: () => navigation.navigate('OnboardingCurrency' as never),
+          onAction: () => navigation.navigate('Login')
       });
-    } else if (authViewModel.error) {
+      }
+    } catch (error: any) {
       showDialog({
         type: 'error',
         title: 'Registration Failed',
-        message: authViewModel.error
+        message: error.message || 'Failed to register. Please try again.'
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 

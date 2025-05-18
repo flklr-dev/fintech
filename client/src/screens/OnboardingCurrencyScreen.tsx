@@ -86,10 +86,10 @@ const OnboardingCurrencyScreen = () => {
   
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.stepText}>Step 1 of 3</Text>
-        <Text style={styles.title}>Select Your Currency</Text>
-        <Text style={styles.subtitle}>
+      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+        <Text style={[styles.stepText, { color: theme.colors.white }]}>Step 1 of 3</Text>
+        <Text style={[styles.title, { color: theme.colors.white }]}>Select Your Currency</Text>
+        <Text style={[styles.subtitle, { color: theme.colors.white }]}>
           Choose the currency you'll primarily use with your account
         </Text>
       </View>
@@ -122,13 +122,6 @@ const OnboardingCurrencyScreen = () => {
             <Ionicons name="arrow-forward" size={20} color="white" />
           </TouchableOpacity>
         </Animated.View>
-        
-        <TouchableOpacity
-          style={styles.skipButton}
-          onPress={() => navigation.navigate('Home' as never)}
-        >
-          <Text style={styles.skipButtonText}>Skip for now</Text>
-        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -141,23 +134,26 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 24,
-    paddingTop: 40,
+    paddingTop: 32,
+    backgroundColor: theme.colors.primary,
+    marginBottom: 24,
   },
   stepText: {
     fontSize: 14,
-    color: theme.colors.primary,
+    color: theme.colors.white,
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: theme.colors.text,
+    color: theme.colors.white,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: theme.colors.textLight,
+    color: theme.colors.white,
+    opacity: 0.8,
     lineHeight: 22,
   },
   currencyList: {
@@ -225,7 +221,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
   },
   buttonDisabled: {
     backgroundColor: theme.colors.gray,
@@ -235,14 +230,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     marginRight: 8,
-  },
-  skipButton: {
-    alignItems: 'center',
-    padding: 8,
-  },
-  skipButtonText: {
-    color: theme.colors.textLight,
-    fontSize: 14,
   },
 });
 

@@ -28,7 +28,7 @@ type AuthContextType = {
   
   // Methods
   login: (data: LoginRequest) => Promise<boolean>;
-  register: (data: RegisterRequest, confirmPassword: string) => Promise<boolean>;
+  register: (data: RegisterRequest, confirmPassword: string) => Promise<{ userId: string; email: string } | null>;
   signInWithGoogle: (token: string) => Promise<boolean>;
   logout: () => Promise<boolean>;
   resetErrors: () => void;
@@ -53,7 +53,7 @@ const AuthContext = createContext<AuthContextType>({
   passwordStrength: null,
   
   login: async () => false,
-  register: async () => false,
+  register: async () => null,
   signInWithGoogle: async () => false,
   logout: async () => false,
   resetErrors: () => {},
@@ -237,40 +237,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Please correct the form errors');
       }
       
-      // Attempt login - this will automatically store the token
-      await authService.login(data);
+      console.log('Attempting login for', data.email);
       
-      // Get token to set in api instance
-      const token = await authService.getToken();
-      if (token) {
-        api.setAuthToken(token);
+      // Attempt login
+      const response = await api.post('/auth/login', data);
+      
+      console.log('Login response received:', response.status);
+      
+      if (!response.data || !response.data.token) {
+        throw new Error('Invalid response from server');
       }
       
-      // Get user data (should have been saved by authService)
-      const userData = await authService.getStoredUserData();
-      if (userData) {
+      // Store token
+      const token = response.data.token;
+      console.log('Token received, storing it');
+      await AsyncStorage.setItem('auth_token', token);
+      
+      // Set token in API instance
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      console.log('Token set in API headers');
+      
+      // Store user data if available
+      if (response.data.data && response.data.data.user) {
+        const userData = response.data.data.user;
+        console.log('User data received, storing it');
+        await AsyncStorage.setItem('user_data', JSON.stringify(userData));
         setUser(userData);
+      } else {
+        console.log('No user data in response, creating fallback user data');
+        const basicUserData = {
+          id: 'temp-id',
+          name: 'User',
+          email: data.email
+        };
+        setUser(basicUserData);
+        await AsyncStorage.setItem('user_data', JSON.stringify(basicUserData));
       }
       
+      // Set logged in state
+      console.log('Setting logged in state to true');
       setIsLoggedIn(true);
+      
+      // Add a small delay to ensure token is properly set
+      console.log('Adding delay for token propagation');
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      console.log('Login process completed successfully');
+      setIsLoading(false);
       return true;
     } catch (error: any) {
+      console.error('Login error:', error);
+      setIsLoading(false);
+      
       // Handle specific API errors
-      if (error.message.includes('Invalid email or password')) {
-        setError('Invalid email or password');
-      } else if (error.message.includes('does not exist')) {
-        setError('Account does not exist');
+      if (error.response) {
+        if (error.response.status === 401) {
+          setError('Invalid email or password');
+        } else if (error.response.data && error.response.data.message) {
+          setError(error.response.data.message);
+        } else {
+          setError('Login failed. Please try again.');
+        }
+      } else if (error.message) {
+        setError(error.message);
       } else {
-        setError(error.message || 'Login failed. Please try again.');
+        setError('Network error. Please check your connection.');
       }
       return false;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   // Register flow
-  const register = async (data: RegisterRequest, confirmPassword: string): Promise<boolean> => {
+  const register = async (data: RegisterRequest, confirmPassword: string): Promise<{ userId: string; email: string } | null> => {
     try {
       setIsLoading(true);
       setError(null);
@@ -285,23 +323,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Please correct the form errors');
       }
       
-      // Attempt registration - this will automatically store the token
-      await authService.register(data);
+      // Attempt registration - returns userId and email for OTP verification 
+      // instead of directly storing the token
+      const result = await authService.register(data);
       
-      // Get token to set in api instance
-      const token = await authService.getToken();
-      if (token) {
-        api.setAuthToken(token);
-      }
-      
-      // Get user data (should have been saved by authService)
-      const userData = await authService.getStoredUserData();
-      if (userData) {
-        setUser(userData);
-      }
-      
-      setIsLoggedIn(true);
-      return true;
+      // Return the result for OTP verification
+      return result;
     } catch (error: any) {
       // Handle specific API errors
       if (error.message.includes('email already exists')) {
@@ -309,7 +336,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         setError(error.message || 'Registration failed. Please try again.');
       }
-      return false;
+      return null;
     } finally {
       setIsLoading(false);
     }

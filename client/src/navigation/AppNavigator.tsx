@@ -22,11 +22,16 @@ import TermsOfServiceScreen from '../screens/TermsOfServiceScreen';
 import OnboardingCurrencyScreen from '../screens/OnboardingCurrencyScreen';
 import OnboardingIncomeScreen from '../screens/OnboardingIncomeScreen';
 import OnboardingBudgetScreen from '../screens/OnboardingBudgetScreen';
+import OTPVerificationScreen from '../screens/OTPVerificationScreen';
 
 // Define navigation types
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
+  OTPVerification: {
+    userId: string;
+    email: string;
+  };
   Home: undefined;
   Budget: {
     showAddModal?: boolean;
@@ -62,14 +67,17 @@ const AppNavigator = observer(() => {
           // If user just registered and hasn't completed onboarding
           if (justRegistered === 'true' && !hasCompletedOnboarding) {
             setIsFirstLogin(true);
+            console.log('User needs to complete onboarding');
             // Clear the registration flag
             await AsyncStorage.removeItem('just_registered');
           } else {
             setIsFirstLogin(false);
+            console.log('User has already completed onboarding or is an existing user');
           }
         } else {
           // User is not logged in, ensure we clear any lingering flags
           setIsFirstLogin(false);
+          console.log('User not logged in, clearing onboarding flags');
           await AsyncStorage.removeItem('just_registered');
           await AsyncStorage.removeItem('has_completed_onboarding');
         }
@@ -86,6 +94,7 @@ const AppNavigator = observer(() => {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={{ marginTop: 10, color: theme.colors.textLight }}>Loading your account...</Text>
       </View>
     );
   }
@@ -119,6 +128,10 @@ const AppNavigator = observer(() => {
           name="Register" 
           component={RegisterScreen} 
           key={`register-screen-${Date.now()}`}
+        />
+        <Stack.Screen 
+          name="OTPVerification" 
+          component={OTPVerificationScreen} 
         />
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="Budget" component={BudgetScreen} />

@@ -81,14 +81,12 @@ const OnboardingIncomeScreen = () => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <SafeAreaView style={styles.safeArea}>
-          <View style={styles.header}>
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
-              <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.stepText}>Step 2 of 3</Text>
+          <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+            <Text style={[styles.stepText, { color: theme.colors.white }]}>Step 2 of 3</Text>
+            <Text style={[styles.title, { color: theme.colors.white }]}>Set Your Income</Text>
+            <Text style={[styles.subtitle, { color: theme.colors.white }]}>
+              This helps us personalize your budgeting experience
+            </Text>
           </View>
           
           <ScrollView 
@@ -96,11 +94,6 @@ const OnboardingIncomeScreen = () => {
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            <Text style={styles.title}>Set Your Income</Text>
-            <Text style={styles.subtitle}>
-              This helps us personalize your budgeting experience
-            </Text>
-            
             <View style={styles.incomeInputContainer}>
               <Text style={styles.currencySymbol}>{currency.symbol}</Text>
               <TextInput
@@ -206,13 +199,6 @@ const OnboardingIncomeScreen = () => {
                 <Ionicons name="arrow-forward" size={20} color="white" />
               </TouchableOpacity>
             </Animated.View>
-            
-            <TouchableOpacity
-              style={styles.skipButton}
-              onPress={() => navigation.navigate('Home' as never)}
-            >
-              <Text style={styles.skipButtonText}>Skip for now</Text>
-            </TouchableOpacity>
           </View>
         </SafeAreaView>
       </KeyboardAvoidingView>
@@ -229,38 +215,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    paddingTop: 24,
-  },
-  backButton: {
-    padding: 8,
-    marginRight: 16,
+    padding: 24,
+    paddingTop: 32,
+    backgroundColor: theme.colors.primary,
+    marginBottom: 24,
   },
   stepText: {
     fontSize: 14,
-    color: theme.colors.primary,
+    color: theme.colors.white,
     fontWeight: '600',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: theme.colors.white,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: theme.colors.white,
+    opacity: 0.8,
+    lineHeight: 22,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 24,
-    paddingTop: 8,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: theme.colors.textLight,
-    lineHeight: 22,
-    marginBottom: 32,
   },
   incomeInputContainer: {
     flexDirection: 'row',
@@ -347,7 +329,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
   },
   buttonDisabled: {
     backgroundColor: theme.colors.gray,
@@ -357,14 +338,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     marginRight: 8,
-  },
-  skipButton: {
-    alignItems: 'center',
-    padding: 8,
-  },
-  skipButtonText: {
-    color: theme.colors.textLight,
-    fontSize: 14,
   },
 });
 

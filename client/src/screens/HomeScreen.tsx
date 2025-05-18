@@ -19,13 +19,14 @@ import { theme } from '../theme';
 import AppHeader from '../components/AppHeader';
 import BottomNavBar from '../components/BottomNavBar';
 import { authViewModel } from '../viewmodels/authViewModel';
-import { authService } from '../services/apiService';
+import { authService, apiService } from '../services/apiService';
 import MessageDialog from '../components/MessageDialog';
 import { ScreenName } from '../components/BottomNavBar';
 import api from '../api/api';
 import { format } from 'date-fns';
 import { budgetService } from '../services/budgetService';
 import { useCurrency } from '../contexts/CurrencyContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 48) / 2;
@@ -57,56 +58,104 @@ const HomeScreen = observer(() => {
     onAction: () => {},
   });
 
+  const [loadingTimeout, setLoadingTimeout] = useState(false);
+
   // Check authentication and load data on mount
   useEffect(() => {
     const initializeScreen = async () => {
-      // First check authentication
+      console.log('HomeScreen: Initializing screen...');
+      
+      // First ensure the token is properly set in API headers
+      try {
+        const token = await AsyncStorage.getItem('auth_token');
+        if (token) {
+          console.log('HomeScreen: Setting token in API headers directly');
+          // Ensure token has Bearer prefix
+          const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+          api.defaults.headers.common['Authorization'] = authHeader;
+          
+          // Also explicitly set it for axios instance in apiService
+          try {
+            await authService.setToken(token);
+            console.log('HomeScreen: Token also set in apiService');
+          } catch (err) {
+            console.warn('HomeScreen: Failed to set token in apiService:', err);
+          }
+        } else {
+          console.warn('HomeScreen: No token found in AsyncStorage');
+        }
+      } catch (tokenErr) {
+        console.error('HomeScreen: Error setting token:', tokenErr);
+      }
+      
+      // Then check authentication
       const isAuthenticated = await checkAuthentication();
       
       // Only fetch data if authenticated
       if (isAuthenticated) {
+        console.log('HomeScreen: User is authenticated, fetching data...');
+        
+        // Try to fetch user profile data once to update it
+        try {
+          const userData = await apiService.getCurrentUser();
+          console.log('HomeScreen: Successfully loaded fresh user profile');
+          runInAction(() => {
+            authViewModel.userId = userData.id;
+            authViewModel.userName = userData.name;
+            authViewModel.email = userData.email;
+          });
+        } catch (profileErr) {
+          console.warn('HomeScreen: Could not fetch fresh profile, using stored data:', profileErr);
+        }
+        
         await fetchAllData();
+      } else {
+        console.log('HomeScreen: User is not authenticated, stopping initialization');
       }
     };
     
+    // Set a timeout to show retry button if loading takes too long
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        console.log('HomeScreen: Loading timeout reached, showing retry button');
+        setLoadingTimeout(true);
+      }
+    }, 6000);
+    
     initializeScreen();
+    
+    return () => clearTimeout(timeoutId);
   }, []);
 
   const checkAuthentication = async () => {
     try {
       // Check if user is logged in with a valid session
-      const isUserLoggedIn = await authService.isLoggedIn();
-      
-      if (!isUserLoggedIn) {
-        // If session is invalid or expired, show dialog and handle logout properly
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        console.log('HomeScreen: No token found during authentication check');
         showDialog({
           type: 'error',
           title: 'Session Expired',
           message: 'Your session has expired. Please login again.',
           actionText: 'Login',
           onAction: async () => {
-            // Perform proper logout first to clear any remaining token data
-            await authService.clearToken();
-            
-            // Reset auth state in viewModel
-            runInAction(() => {
-              authViewModel.isLoggedIn = false;
-              authViewModel.userId = null;
-              authViewModel.userName = null;
-              authViewModel.email = null;
-            });
-            
-            // Navigate to login screen
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' }],
-            });
+            await handleLogout();
           }
         });
         return false;
-      } else if (!authViewModel.isLoggedIn) {
-        // If token exists but authViewModel state is wrong, update the state
-        // without showing any dialog (silent update)
+      }
+      
+      // Try a simple API call to verify token is working
+      try {
+        console.log('HomeScreen: Testing token with /transactions endpoint');
+        // Use a simple, fast endpoint to test if the token works
+        await api.get('/transactions', { 
+          params: { limit: 1 },
+          timeout: 3000 
+        });
+        console.log('HomeScreen: Token is valid, user is logged in');
+        
+        // If we get here, the token is working
         runInAction(() => {
           authViewModel.isLoggedIn = true;
         });
@@ -115,19 +164,69 @@ const HomeScreen = observer(() => {
         try {
           const userData = await authService.getStoredUserData();
           if (userData) {
+            console.log('HomeScreen: Using stored user data:', userData.name);
             runInAction(() => {
               authViewModel.userId = userData.id;
               authViewModel.userName = userData.name;
               authViewModel.email = userData.email;
             });
+          } else {
+            console.log('HomeScreen: No stored user data, using default values');
+            // Set default values to prevent UI issues
+            runInAction(() => {
+              authViewModel.userId = 'user-id';
+              authViewModel.userName = 'User';
+              authViewModel.email = 'user@example.com';
+            });
           }
         } catch (err) {
-          console.error('Error loading stored user data:', err);
+          console.error('HomeScreen: Error loading stored user data:', err);
         }
+        
+        return true;
+      } catch (apiError) {
+        console.error('HomeScreen: API call failed during auth check:', apiError);
+        showDialog({
+          type: 'error',
+          title: 'Authentication Error',
+          message: 'We could not verify your login. Please login again.',
+          actionText: 'Login',
+          onAction: async () => {
+            await handleLogout();
+          }
+        });
+        return false;
       }
+    } catch (error) {
+      console.error('HomeScreen: Authentication check error:', error);
+      return false;
+    }
+  };
+
+  const refreshAuthToken = async () => {
+    try {
+      console.log('HomeScreen: Attempting to refresh auth token');
+      
+      // Get raw token from AsyncStorage
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        console.log('HomeScreen: No token found during refresh attempt');
+        return false;
+      }
+      
+      // Ensure token format is correct and set it in both API instances
+      const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
+      
+      // Set in the main api instance
+      api.defaults.headers.common['Authorization'] = authHeader;
+      
+      // Also set it in the apiService's axios instance
+      await authService.setToken(token);
+      
+      console.log('HomeScreen: Auth token refreshed in all API instances');
       return true;
     } catch (error) {
-      console.error('Authentication check error:', error);
+      console.error('HomeScreen: Error refreshing auth token:', error);
       return false;
     }
   };
@@ -135,11 +234,36 @@ const HomeScreen = observer(() => {
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      await Promise.all([
-        fetchTransactionSummary(),
-        fetchRecentTransactions(),
-        fetchBudgets()
-      ]);
+      // First refresh the auth token to ensure it's valid
+      await refreshAuthToken();
+      
+      // Create timeout promises for each fetch operation
+      const timeoutDuration = 5000; // 5 seconds timeout
+      const createTimeoutPromise = () => 
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Data fetch timeout')), timeoutDuration)
+        );
+      
+      // Wrap each promise with a race against timeout
+      const summary = Promise.race([fetchTransactionSummary(), createTimeoutPromise()]);
+      const transactions = Promise.race([fetchRecentTransactions(), createTimeoutPromise()]);
+      const budgets = Promise.race([fetchBudgets(), createTimeoutPromise()]);
+      
+      // Execute them in parallel but handle individual failures
+      const results = await Promise.allSettled([summary, transactions, budgets]);
+      
+      // Log any rejected promises
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const apiName = ['transaction summary', 'recent transactions', 'budgets'][index];
+          console.error(`Failed to fetch ${apiName}:`, result.reason);
+        }
+      });
+      
+      // Continue even if some requests failed
+      if (results.every(r => r.status === 'rejected')) {
+        throw new Error('All data fetching operations failed');
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
       showDialog({
@@ -273,6 +397,22 @@ const HomeScreen = observer(() => {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
+      // Refresh auth token first
+      await refreshAuthToken();
+      
+      // Try to fetch user profile again
+      try {
+        const userData = await apiService.getCurrentUser();
+        console.log('HomeScreen: Refreshed user profile data');
+        runInAction(() => {
+          authViewModel.userId = userData.id;
+          authViewModel.userName = userData.name;
+          authViewModel.email = userData.email;
+        });
+      } catch (profileErr) {
+        console.warn('HomeScreen: Could not refresh profile:', profileErr);
+      }
+      
       await fetchAllData();
     } catch (error) {
       console.error('Error refreshing data:', error);
@@ -433,6 +573,23 @@ const HomeScreen = observer(() => {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>Loading your financial data...</Text>
+          
+          {loadingTimeout && (
+            <View style={styles.timeoutContainer}>
+              <Text style={styles.timeoutText}>
+                This is taking longer than usual.
+              </Text>
+              <TouchableOpacity 
+                style={styles.retryButton}
+                onPress={() => {
+                  setLoadingTimeout(false);
+                  fetchAllData();
+                }}
+              >
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -991,6 +1148,26 @@ const styles = StyleSheet.create({
   },
   overBudgetBar: {
     backgroundColor: theme.colors.error,
+  },
+  timeoutContainer: {
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  timeoutText: {
+    color: theme.colors.textLight,
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  retryButton: {
+    backgroundColor: theme.colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: theme.colors.white,
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
 

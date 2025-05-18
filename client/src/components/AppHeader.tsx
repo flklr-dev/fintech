@@ -15,6 +15,7 @@ interface AppHeaderProps {
   showProfile?: boolean;
   onProfilePress?: () => void;
   headerTitle?: string;
+  title?: string;
 }
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -27,6 +28,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({
   showProfile = true,
   onProfilePress,
   headerTitle,
+  title,
 }) => {
   const { user } = useAuth();
   const navigation = useNavigation<NavigationProp>();

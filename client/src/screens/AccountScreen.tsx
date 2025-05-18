@@ -1484,6 +1484,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 15,
   },
+  emptyText: {
+    flex: 1,
+    textAlign: 'center',
+    color: theme.colors.textLight,
+    fontSize: 15,
+    marginTop: 12,
+  },
   sectionLabel: {
     fontSize: 13,
     color: theme.colors.textLight,

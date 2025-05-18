@@ -251,17 +251,14 @@ class AuthViewModel {
         throw new Error('Please correct the form errors');
       }
       
-      // Attempt registration
-      const token = await authService.register(data);
-      
-      // Store token
-      await authService.setToken(token);
+      // Attempt registration - this will return userId and email for OTP verification
+      const result = await authService.register(data);
       
       runInAction(() => {
         this.isLoading = false;
       });
       
-      return true;
+      return result;
     } catch (error: any) {
       runInAction(() => {
         this.isLoading = false;
@@ -282,7 +279,8 @@ class AuthViewModel {
           this.error = error.message || 'Registration failed. Please try again.';
         }
       });
-      return false;
+      
+      throw error;
     }
   }
 
@@ -294,8 +292,10 @@ class AuthViewModel {
       
       const authToken = await authService.loginWithGoogle(token);
       
-      // Store token
+      // Store token if it's a string (not just a boolean success indicator)
+      if (typeof authToken === 'string') {
       await authService.setToken(authToken);
+      }
       
       runInAction(() => {
         this.isLoggedIn = true;

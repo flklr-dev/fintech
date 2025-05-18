@@ -24,6 +24,7 @@ import { signInWithGoogle } from '../services/googleSignIn';
 import { auth } from '../config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import useScreenSecurity from '../hooks/useScreenSecurity';
+import api from '../api/api';
 
 // Define the navigation prop type
 type RootStackParamList = {
@@ -34,6 +35,7 @@ type RootStackParamList = {
   Transactions: undefined;
   Goals: undefined;
   Reports: undefined;
+  OTPVerification: { userId: string; email: string };
 };
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
@@ -115,33 +117,57 @@ const LoginScreen = observer(() => {
 
   // Handle login button press
   const handleLogin = async () => {
-    // Validate inputs
-    const isEmailValid = auth.validateEmail(email);
-    const isPasswordValid = password.length > 0;
-    
-    if (!isEmailValid || !isPasswordValid) {
-      if (!isPasswordValid) {
-        auth.passwordError = 'This field is required';
+    try {
+      setIsLoading(true);
+      auth.resetErrors();
+
+      // Validate input
+      const isEmailValid = auth.validateEmail(email);
+      const isPasswordValid = password.length > 0;
+      
+      if (!isEmailValid || !isPasswordValid) {
+        if (!isPasswordValid) auth.passwordError = 'This field is required';
+        throw new Error('Please correct the form errors');
       }
-      return;
-    }
-    
-    // Attempt login
-    const success = await auth.login({ email, password });
-    
-    if (success) {
-      showDialog({
-        type: 'success',
-        title: 'Login Successful',
-        message: 'You have been logged in successfully.',
-        onAction: () => navigation.navigate('Home'),
-      });
-    } else if (auth.error) {
+      
+      // Use the auth context login method directly, which handles token storage properly
+      const success = await auth.login({ email, password });
+      
+      if (success) {
+        console.log('Login successful, navigating to Home');
+        // Navigate directly to Home screen without checking token again
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Home' }],
+        });
+      } else if (auth.error) {
+        // If there's an error message from auth context, show it
+        showDialog({
+          type: 'error',
+          title: 'Login Failed',
+          message: auth.error
+        });
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      
+      // Check if response indicates unverified account
+      if (error.response && error.response.data && error.response.data.requiresVerification) {
+        // Navigate to verification screen with the provided details
+        navigation.navigate('OTPVerification', {
+          userId: error.response.data.data.userId,
+          email: error.response.data.data.email
+        });
+        return;
+      }
+      
       showDialog({
         type: 'error',
         title: 'Login Failed',
-        message: auth.error
+        message: error.response?.data?.message || error.message || 'Failed to log in. Please try again.',
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -274,12 +300,12 @@ const LoginScreen = observer(() => {
           <TouchableOpacity
             style={[
               styles.button,
-              auth.isLoading && styles.buttonDisabled,
+              (isLoading || auth.isLoading) && styles.buttonDisabled,
             ]}
             onPress={handleLogin}
-            disabled={auth.isLoading}
+            disabled={isLoading || auth.isLoading}
           >
-            {auth.isLoading ? (
+            {isLoading ? (
               <ActivityIndicator color="white" />
             ) : (
               <Text style={styles.buttonText}>Login</Text>

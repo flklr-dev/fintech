@@ -3,6 +3,8 @@ const { promisify } = require('util');
 const User = require('../models/User');
 const config = require('../config/config');
 const admin = require('../config/firebaseAdmin');
+const emailService = require('../utils/emailService');
+const otpUtils = require('../utils/otpUtils');
 
 // Create a token for a user ID
 const signToken = id => {
@@ -30,17 +32,224 @@ const createSendToken = (user, statusCode, res) => {
 // Signup user
 exports.signup = async (req, res) => {
   try {
+    // Validate email format
+    const emailRegex = /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/;
+    if (!emailRegex.test(req.body.email)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Please provide a valid email address'
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: req.body.email });
+    if (existingUser) {
+      // If user exists but is not verified, allow re-registration
+      if (!existingUser.isVerified && existingUser.authProvider === 'local') {
+        await User.deleteOne({ _id: existingUser._id });
+      } else {
+        return res.status(400).json({
+          status: 'fail',
+          message: 'Email already exists. Please use a different email or login.'
+        });
+      }
+    }
+
+    // Create a new user with verification status set to false
     const newUser = await User.create({
       name: req.body.name,
       email: req.body.email,
-      password: req.body.password
+      password: req.body.password,
+      isVerified: false, // User is not verified until OTP is confirmed
+      authProvider: 'local'
     });
+
+    // Generate OTP for verification
+    const otp = otpUtils.generateOTP();
+    const otpExpiry = otpUtils.generateOTPExpiry();
+
+    // Save OTP to user document
+    newUser.otp = {
+      code: otp,
+      expiresAt: otpExpiry,
+      attempts: 0
+    };
     
-    createSendToken(newUser, 201, res);
+    await newUser.save({ validateBeforeSave: false });
+
+    // Send OTP email
+    try {
+      await emailService.sendOTPEmail(newUser.email, newUser.name, otp);
+
+      // Send response without token (user is not fully registered yet)
+      res.status(201).json({
+        status: 'success',
+        message: 'Registration initiated. Please verify your email with the OTP sent.',
+        data: {
+          userId: newUser._id,
+          email: newUser.email
+        }
+      });
+    } catch (emailError) {
+      // If email sending fails, delete the user and return error
+      await User.deleteOne({ _id: newUser._id });
+      
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to send verification email. Please try again later.'
+      });
+    }
   } catch (err) {
     res.status(400).json({
       status: 'fail',
       message: err.message
+    });
+  }
+};
+
+// Verify OTP and complete registration
+exports.verifyOTP = async (req, res) => {
+  try {
+    const { userId, otp } = req.body;
+
+    // Validate input
+    if (!userId || !otp) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'User ID and OTP are required'
+      });
+    }
+
+    // Validate OTP format
+    if (!otpUtils.isValidOTPFormat(otp)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid OTP format. Must be 6 digits.'
+      });
+    }
+
+    // Find user with the provided ID and include OTP fields
+    const user = await User.findById(userId).select('+otp.code +otp.expiresAt +otp.attempts');
+
+    // Check if user exists
+    if (!user) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'User not found'
+      });
+    }
+
+    // Check if user is already verified
+    if (user.isVerified) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'User is already verified'
+      });
+    }
+
+    // Check if OTP is expired
+    if (otpUtils.isOTPExpired(user.otp.expiresAt)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'OTP has expired. Please request a new one.'
+      });
+    }
+
+    // Check if too many attempts
+    if (user.otp.attempts >= 5) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Too many failed attempts. Please request a new OTP.'
+      });
+    }
+
+    // Verify OTP
+    if (user.otp.code !== otp) {
+      // Increment attempts counter
+      user.otp.attempts += 1;
+      await user.save({ validateBeforeSave: false });
+
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid OTP',
+        attemptsLeft: 5 - user.otp.attempts
+      });
+    }
+
+    // OTP is valid - mark user as verified
+    user.isVerified = true;
+    
+    // Clear OTP data
+    user.otp = undefined;
+    
+    await user.save({ validateBeforeSave: false });
+
+    // Generate authentication token
+    createSendToken(user, 200, res);
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to verify OTP'
+    });
+  }
+};
+
+// Resend OTP
+exports.resendOTP = async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    // Validate input
+    if (!userId) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'User ID is required'
+      });
+    }
+
+    // Find user
+    const user = await User.findById(userId);
+
+    // Check if user exists
+    if (!user) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'User not found'
+      });
+    }
+
+    // Check if user is already verified
+    if (user.isVerified) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'User is already verified'
+      });
+    }
+
+    // Generate new OTP
+    const otp = otpUtils.generateOTP();
+    const otpExpiry = otpUtils.generateOTPExpiry();
+
+    // Update user with new OTP
+    user.otp = {
+      code: otp,
+      expiresAt: otpExpiry,
+      attempts: 0
+    };
+
+    await user.save({ validateBeforeSave: false });
+
+    // Send OTP email
+    await emailService.sendOTPEmail(user.email, user.name, otp);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'OTP has been resent to your email'
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to resend OTP'
     });
   }
 };
@@ -65,6 +274,35 @@ exports.login = async (req, res) => {
       return res.status(401).json({
         status: 'fail',
         message: 'Incorrect email or password'
+      });
+    }
+    
+    // Check if user is verified for local auth
+    if (user.authProvider === 'local' && !user.isVerified) {
+      // Generate new OTP for verification
+      const otp = otpUtils.generateOTP();
+      const otpExpiry = otpUtils.generateOTPExpiry();
+
+      // Save OTP to user document
+      user.otp = {
+        code: otp,
+        expiresAt: otpExpiry,
+        attempts: 0
+      };
+      
+      await user.save({ validateBeforeSave: false });
+
+      // Send OTP email
+      await emailService.sendOTPEmail(user.email, user.name, otp);
+
+      return res.status(403).json({
+        status: 'fail',
+        message: 'Account not verified. A new verification code has been sent to your email.',
+        requiresVerification: true,
+        data: {
+          userId: user._id,
+          email: user.email
+        }
       });
     }
     

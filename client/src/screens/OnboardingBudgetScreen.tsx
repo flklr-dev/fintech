@@ -14,6 +14,7 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import { useCurrency } from '../contexts/CurrencyContext';
@@ -22,6 +23,9 @@ import { budgetService } from '../services/budgetService';
 import api from '../api/api';
 import axios, { AxiosError } from 'axios';
 import { authService } from '../services/apiService';
+import { RootStackParamList } from '../navigation/AppNavigator';
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 // Budget category icons
 const BUDGET_CATEGORIES = [
@@ -36,12 +40,13 @@ const BUDGET_CATEGORIES = [
 ];
 
 const OnboardingBudgetScreen = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp>();
   const { formatCurrency } = useCurrency();
   const [income, setIncome] = useState<number>(0);
   const [userBudgets, setUserBudgets] = useState<any[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   // Budget form state
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -59,22 +64,53 @@ const OnboardingBudgetScreen = () => {
         const income = userIncomeString ? parseFloat(userIncomeString) : 0;
         setIncome(income);
         
-        // Check authentication token - explicitly set it in API headers
-        const token = await authService.getToken();
-        if (token) {
-          // Set token in API headers for both instances
-          api.setAuthToken(token);
-          console.log('Authentication token set for onboarding');
-        } else {
+        // Check authentication token
+        const token = await AsyncStorage.getItem('auth_token');
+        if (!token) {
           console.warn('No authentication token found during onboarding');
+          throw new Error('Authentication token not found. Please login again.');
         }
-      } catch (error) {
+
+        // Set token in API headers
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        console.log('Authentication token set for onboarding');
+        
+      } catch (error: any) {
         console.error('Error during onboarding initialization:', error);
+        setError(error.message);
+        
+        // If no token found, redirect to login
+        if (error.message.includes('Authentication token not found')) {
+          Alert.alert(
+            'Session Expired',
+            'Your session has expired. Please login again.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  // Clear any stored data
+                  AsyncStorage.multiRemove([
+                    'auth_token',
+                    'user_income',
+                    'income_frequency',
+                    'just_registered'
+                  ]).then(() => {
+                    // Navigate back to login
+                    navigation.reset({
+                      index: 0,
+                      routes: [{ name: 'Login' }],
+                    });
+                  });
+                }
+              }
+            ]
+          );
+        }
       }
     };
     
     initialize();
-  }, []);
+  }, [navigation]);
   
   // Calculate total budget amount
   const getTotalBudgetAmount = () => {
@@ -140,20 +176,25 @@ const OnboardingBudgetScreen = () => {
 
   // Verify authentication token and ensure it's set in headers
   const verifyAndSetAuthToken = async (): Promise<string> => {
-    // Get token using authService which handles validation
-    const token = await authService.getToken();
-    
-    if (!token) {
+    try {
+      // Get token from AsyncStorage directly first
+      const token = await AsyncStorage.getItem('auth_token');
+      
+      if (!token) {
+        throw new Error('Authentication token not found. Please login again.');
+      }
+      
+      // Set token in API headers
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      
+      // Test the token with a simple API call
+      await api.get('/auth/me');
+      
+      return token;
+    } catch (error) {
+      console.error('Token verification failed:', error);
       throw new Error('Authentication token not found. Please login again.');
     }
-    
-    // Explicitly set the token in API headers for both instances
-    api.setAuthToken(token);
-    
-    // Set Authorization header for axios instance inside budgetService
-    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    
-    return token;
   };
   
   // Save income data to the server
@@ -228,126 +269,88 @@ const OnboardingBudgetScreen = () => {
   
   // Handle continue button press
   const handleContinue = async () => {
-    // Animate button press
-    Animated.sequence([
-      Animated.timing(buttonScale, {
-        toValue: 0.95,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(buttonScale, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
-    
-    // Save budgets to server
-    setLoading(true);
-    
     try {
-      // Get current date and last day of month for budget period
-      const now = new Date();
-      const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      
-      // Verify and set auth token before making API requests
-      const token = await verifyAndSetAuthToken();
-      console.log('Using token for budget creation:', token ? 'Token is valid' : 'No token');
-      
-      // IMPORTANT: Always sync the income data to the server
+      setLoading(true);
+      setError(null);
+
+      // First verify and set the token
+      await verifyAndSetAuthToken();
+
+      // First, sync income data to server
       const incomeSynced = await syncIncomeToServer();
       if (!incomeSynced) {
-        console.warn('Could not sync income to server, budget creation might fail');
-      } else {
-        console.log('Income successfully synced to server');
+        throw new Error('Failed to sync income data');
       }
-      
-      // Only create budgets if the user has added them
+
+      // Save budgets if any exist
       if (userBudgets.length > 0) {
-        // Create budgets in parallel
-        await Promise.all(
-          userBudgets.map(budget => 
-            budgetService.createBudget({
+        for (const budget of userBudgets) {
+          try {
+            await api.post('/budgets', {
               category: budget.category,
               amount: parseFloat(budget.amount),
               period: 'monthly',
-              startDate: now,
-              endDate: lastDayOfMonth,
-              notifications: {
-                enabled: true,
-                threshold: 80,
-              },
-            })
-          )
-        );
-        console.log('All budgets successfully saved to server');
-      } else {
-        console.log('No budgets to save, only income was synced');
-      }
-      
-      // Set flag indicating onboarding is complete
-      await AsyncStorage.setItem('has_completed_onboarding', 'true');
-      
-      // Navigate to home screen
-      navigation.navigate('Home' as never);
-    } catch (error) {
-      console.error('Error during onboarding completion:', error);
-      
-      // Mark onboarding as complete regardless of error
-      await AsyncStorage.setItem('has_completed_onboarding', 'true');
-      
-      // Identify error type for better UX
-      let errorMessage = 'Failed to save your information. You can set up your budgets later from the Budget screen.';
-      let needsRelogin = false;
-      
-      // Check for income/budget limit errors
-      if (error instanceof AxiosError && error.response) {
-        if (error.response.status === 400 && 
-            error.response.data?.message?.includes('would exceed your available income')) {
-          errorMessage = 'Your budgets exceed your monthly income on the server. You can set them up later from the Budget screen.';
-        } else if (error.response.status === 401) {
-          errorMessage = 'Your session has expired. Please login again to continue.';
-          needsRelogin = true;
-        } else if (error.response.status >= 500) {
-          errorMessage = 'Server error. Your information could not be saved but you can set it up later.';
+              startDate: new Date(),
+              endDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)
+            });
+          } catch (budgetError) {
+            console.error('Failed to create budget:', budgetError);
+          }
         }
-      } else if (error instanceof Error && 
-               (error.message.includes('Authentication') || 
-                error.message.includes('token') ||
-                error.message.includes('logged in'))) {
-        errorMessage = 'Authentication error. Please login again to continue.';
-        needsRelogin = true;
       }
-      
-      if (needsRelogin) {
-        // Need to re-login 
-        Alert.alert(
-          'Authentication Error',
-          errorMessage,
-          [{ 
-            text: 'OK', 
-            onPress: async () => {
-              // Clear auth tokens to force re-login
-              await AsyncStorage.removeItem('auth_token');
-              await AsyncStorage.removeItem('token_expiry');
-              await AsyncStorage.removeItem('user_data');
-              // Navigate to login screen
+
+      // Mark onboarding as complete
+      await AsyncStorage.setItem('has_completed_onboarding', 'true');
+      await AsyncStorage.removeItem('just_registered');
+
+      // Show completion message
+      Alert.alert(
+        'Setup Complete! 🎉',
+        'Your account has been successfully set up. You can now start managing your finances.',
+        [
+          {
+            text: 'Get Started',
+            onPress: () => {
               navigation.reset({
                 index: 0,
-                routes: [{ name: 'Login' as never }],
+                routes: [{ name: 'Home' }],
               });
             }
-          }]
+          }
+        ]
+      );
+
+    } catch (error: any) {
+      console.error('Error during onboarding completion:', error);
+
+      if (error.message.includes('Authentication token not found')) {
+        Alert.alert(
+          'Session Expired',
+          'Your session has expired. Please login again.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                AsyncStorage.multiRemove([
+                  'auth_token',
+                  'user_income',
+                  'income_frequency',
+                  'just_registered'
+                ]).then(() => {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Login' }],
+                  });
+                });
+              }
+            }
+          ]
         );
       } else {
-        // Can continue without re-login
         Alert.alert(
           'Error',
-          errorMessage,
-          [{ 
-            text: 'OK', 
-            onPress: () => navigation.navigate('Home' as never)
-          }]
+          'Failed to complete setup. Please try again.',
+          [{ text: 'OK' }]
         );
       }
     } finally {
@@ -385,14 +388,12 @@ const OnboardingBudgetScreen = () => {
   
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.stepText}>Step 3 of 3</Text>
+      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+        <Text style={[styles.stepText, { color: theme.colors.white }]}>Step 3 of 3</Text>
+        <Text style={[styles.title, { color: theme.colors.white }]}>Set Up Your Budgets</Text>
+        <Text style={[styles.subtitle, { color: theme.colors.white }]}>
+          Create budgets to help manage your monthly spending
+        </Text>
       </View>
       
       <ScrollView 
@@ -400,11 +401,6 @@ const OnboardingBudgetScreen = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Set Up Your Budgets</Text>
-        <Text style={styles.subtitle}>
-          Create budgets to help manage your monthly spending
-        </Text>
-        
         <View style={styles.incomeCard}>
           <View style={styles.incomeRow}>
             <View>
@@ -497,9 +493,7 @@ const OnboardingBudgetScreen = () => {
               <ActivityIndicator color="white" size="small" />
             ) : (
               <>
-                <Text style={styles.buttonText}>
-                  {userBudgets.length > 0 ? 'Save & Continue' : 'Skip for now'}
-                </Text>
+                <Text style={styles.buttonText}>Continue</Text>
                 <Ionicons name="arrow-forward" size={20} color="white" />
               </>
             )}
@@ -577,39 +571,35 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    paddingTop: 24,
-  },
-  backButton: {
-    padding: 8,
-    marginRight: 16,
+    padding: 24,
+    paddingTop: 32,
+    backgroundColor: theme.colors.primary,
+    marginBottom: 24,
   },
   stepText: {
     fontSize: 14,
-    color: theme.colors.primary,
+    color: theme.colors.white,
     fontWeight: '600',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: theme.colors.white,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: theme.colors.white,
+    opacity: 0.8,
+    lineHeight: 22,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 24,
-    paddingTop: 8,
     paddingBottom: 100,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: theme.colors.textLight,
-    lineHeight: 22,
-    marginBottom: 24,
   },
   incomeCard: {
     backgroundColor: theme.colors.white,

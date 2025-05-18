@@ -4,10 +4,15 @@
     "slug": "fintech",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/fintech-logo3.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "fintech",
+    "splash": {
+      "image": "./assets/fintech-logo3.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#3770FF"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -18,14 +23,14 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/fintech-logo3.png",
+        "backgroundColor": "#3770FF"
       },
       "package": "com.kitadrian.fintech",
       "googleServicesFile": "./google-services.json"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/fintech-logo3.png"
     },
     "plugins": [
       "@react-native-google-signin/google-signin"

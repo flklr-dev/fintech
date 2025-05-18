@@ -13,6 +13,10 @@ module.exports = {
   // Encryption settings
   ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || 'your_aes_256_encryption_key_change_in_production',
   
+  // Email settings
+  EMAIL_USER: process.env.EMAIL_USER,
+  EMAIL_PASSWORD: process.env.EMAIL_PASSWORD,
+  
   // Rate limiting
   RATE_LIMIT_WINDOW_MS: 15 * 60 * 1000, // 15 minutes
   RATE_LIMIT_MAX: 100 // limit each IP to 100 requests per windowMs
