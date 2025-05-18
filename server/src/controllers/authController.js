@@ -457,4 +457,231 @@ exports.googleSignIn = async (req, res) => {
       message: error.message || 'Failed to authenticate with Google'
     });
   }
+};
+
+// Request password reset
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Validate email
+    if (!email) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Please provide your email address'
+      });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'No user found with that email address'
+      });
+    }
+
+    // Generate OTP for password reset
+    const otp = otpUtils.generateOTP();
+    const otpExpiry = otpUtils.generateOTPExpiry();
+
+    // Save OTP to user document
+    user.otp = {
+      code: otp,
+      expiresAt: otpExpiry,
+      attempts: 0
+    };
+    user.passwordResetToken = jwt.sign({ id: user._id }, config.JWT_SECRET, { expiresIn: '1h' });
+    user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await user.save({ validateBeforeSave: false });
+
+    // Send password reset email
+    try {
+      await emailService.sendPasswordResetEmail(user.email, user.name, otp);
+
+      res.status(200).json({
+        status: 'success',
+        message: 'Password reset code has been sent to your email',
+        data: {
+          userId: user._id,
+          email: user.email
+        }
+      });
+    } catch (emailError) {
+      // If email sending fails, clear the reset tokens
+      user.otp = undefined;
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+      await user.save({ validateBeforeSave: false });
+
+      return res.status(500).json({
+        status: 'error',
+        message: 'Failed to send password reset email. Please try again later.'
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to process password reset request'
+    });
+  }
+};
+
+// Verify reset OTP and reset password
+exports.resetPassword = async (req, res) => {
+  try {
+    const { userId, otp, newPassword } = req.body;
+
+    // Validate input
+    if (!userId || !otp || !newPassword) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Please provide all required fields'
+      });
+    }
+
+    // Find user and include OTP and reset token fields
+    const user = await User.findById(userId).select(
+      '+otp.code +otp.expiresAt +otp.attempts +password +passwordResetToken +passwordResetExpires'
+    );
+
+    // Check if user exists
+    if (!user) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'Invalid or expired reset token'
+      });
+    }
+
+    // Check if password reset token is expired
+    if (!user.passwordResetExpires || user.passwordResetExpires < Date.now()) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Password reset token has expired. Please request a new one.'
+      });
+    }
+
+    // Check if OTP is expired
+    if (otpUtils.isOTPExpired(user.otp.expiresAt)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'OTP has expired. Please request a new one.'
+      });
+    }
+
+    // Check if too many attempts
+    if (user.otp.attempts >= 5) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Too many failed attempts. Please request a new reset code.'
+      });
+    }
+
+    // Verify OTP
+    if (user.otp.code !== otp) {
+      // Increment attempts counter
+      user.otp.attempts += 1;
+      await user.save({ validateBeforeSave: false });
+
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid reset code',
+        attemptsLeft: 5 - user.otp.attempts
+      });
+    }
+
+    // Set new password
+    user.password = newPassword;
+    
+    // Clear reset data
+    user.otp = undefined;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    
+    await user.save();
+
+    // Log the user in by sending a new token
+    createSendToken(user, 200, res);
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to reset password'
+    });
+  }
+};
+
+// Verify reset OTP
+exports.verifyResetOTP = async (req, res) => {
+  try {
+    const { userId, otp } = req.body;
+
+    // Validate input
+    if (!userId || !otp) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Please provide userId and OTP'
+      });
+    }
+
+    // Find user and include OTP and reset token fields
+    const user = await User.findById(userId).select(
+      '+otp.code +otp.expiresAt +otp.attempts +passwordResetToken +passwordResetExpires'
+    );
+
+    // Check if user exists
+    if (!user) {
+      return res.status(404).json({
+        status: 'fail',
+        message: 'User not found'
+      });
+    }
+
+    // Check if password reset token is expired
+    if (!user.passwordResetExpires || user.passwordResetExpires < Date.now()) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Password reset token has expired. Please request a new one.'
+      });
+    }
+
+    // Check if OTP is expired
+    if (otpUtils.isOTPExpired(user.otp.expiresAt)) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'OTP has expired. Please request a new one.'
+      });
+    }
+
+    // Check if too many attempts
+    if (user.otp.attempts >= 5) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Too many failed attempts. Please request a new reset code.'
+      });
+    }
+
+    // Verify OTP
+    if (user.otp.code !== otp) {
+      // Increment attempts counter
+      user.otp.attempts += 1;
+      await user.save({ validateBeforeSave: false });
+
+      return res.status(400).json({
+        status: 'fail',
+        message: 'Invalid reset code',
+        attemptsLeft: 5 - user.otp.attempts
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'OTP verified successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Failed to verify OTP'
+    });
+  }
 }; 

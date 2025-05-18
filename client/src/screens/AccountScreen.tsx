@@ -43,7 +43,6 @@ const AccountScreen = () => {
   const { currency, setCurrency } = useCurrency();
   
   // App preferences state
-  const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
   
   // User profile state
@@ -865,24 +864,6 @@ const AccountScreen = () => {
                     </View>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={theme.colors.textLight} />
-                </TouchableOpacity>
-              
-              {/* Biometric Login */}
-                <TouchableOpacity style={styles.settingsItem} activeOpacity={0.7}>
-                  <View style={styles.settingsItemLeft}>
-                    <Ionicons name="finger-print-outline" size={22} color="#00BCD4" style={styles.settingsIcon} />
-                    <View style={styles.settingsItemContent}>
-                      <Text style={styles.settingsItemText}>Biometric Login</Text>
-                      <Text style={styles.settingsItemSubtext}>Use fingerprint or Face ID</Text>
-                    </View>
-                  </View>
-                  <Switch
-                    trackColor={{ false: theme.colors.lightGray, true: `${theme.colors.primary}80` }}
-                    thumbColor={biometricEnabled ? theme.colors.primary : '#f4f3f4'}
-                    ios_backgroundColor="#3e3e3e"
-                    onValueChange={() => setBiometricEnabled(!biometricEnabled)}
-                    value={biometricEnabled}
-                  />
                 </TouchableOpacity>
 
               {/* Currency Selection */}

@@ -36,6 +36,7 @@ type RootStackParamList = {
   Goals: undefined;
   Reports: undefined;
   OTPVerification: { userId: string; email: string };
+  ForgotPassword: undefined;
 };
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
@@ -293,17 +294,10 @@ const LoginScreen = observer(() => {
             isPassword
           />
 
-          <TouchableOpacity style={styles.forgotPassword}>
-            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-          </TouchableOpacity>
-
           <TouchableOpacity
-            style={[
-              styles.button,
-              (isLoading || auth.isLoading) && styles.buttonDisabled,
-            ]}
+            style={styles.button}
             onPress={handleLogin}
-            disabled={isLoading || auth.isLoading}
+            disabled={isLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="white" />
@@ -312,10 +306,17 @@ const LoginScreen = observer(() => {
             )}
           </TouchableOpacity>
 
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
+          <TouchableOpacity
+            style={styles.forgotPasswordButton}
+            onPress={() => navigation.navigate('ForgotPassword')}
+          >
+            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+          </TouchableOpacity>
+
+          <View style={styles.dividerContainer}>
+            <View style={styles.divider} />
             <Text style={styles.dividerText}>OR</Text>
-            <View style={styles.dividerLine} />
+            <View style={styles.divider} />
           </View>
 
           <GoogleButton 
@@ -388,14 +389,6 @@ const styles = StyleSheet.create({
   form: {
     marginBottom: theme.spacing.xl,
   },
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    marginBottom: theme.spacing.md,
-  },
-  forgotPasswordText: {
-    color: theme.colors.primary,
-    fontSize: 14,
-  },
   button: {
     backgroundColor: theme.colors.primary,
     borderRadius: theme.borderRadius.md,
@@ -411,12 +404,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  divider: {
+  dividerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: theme.spacing.md,
+    marginTop: 8,
+    marginBottom: theme.spacing.md,
   },
-  dividerLine: {
+  divider: {
     flex: 1,
     height: 1,
     backgroundColor: theme.colors.border,
@@ -439,6 +433,18 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontWeight: '600',
     fontSize: 14,
+  },
+  forgotPasswordButton: {
+    alignSelf: 'flex-end',
+    marginTop: -16,
+    marginBottom: 16,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  forgotPasswordText: {
+    color: theme.colors.primary,
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
 

@@ -98,16 +98,11 @@ const getValidToken = async (): Promise<string | null> => {
   try {
     // First check if we have a token
     const tokenData = await getSecurely(AUTH_TOKEN_KEY);
-    const rawToken = await AsyncStorage.getItem('auth_token');
-    
-    // Prioritize token from secure storage, but fall back to raw token
-    let token = tokenData?.token || rawToken;
-    
-    if (!token) return null;
+    if (!tokenData?.token) return null;
     
     // Then check if we have expiry info
     const expiryStr = await AsyncStorage.getItem(TOKEN_EXPIRY_KEY);
-    if (!expiryStr) return token; // If no expiry, assume token is valid
+    if (!expiryStr) return tokenData.token; // If no expiry, assume token is valid
     
     // Check if token is expired
     const expiry = parseInt(expiryStr, 10);
@@ -120,11 +115,9 @@ const getValidToken = async (): Promise<string | null> => {
     }
     
     // Token is valid, ensure it's set in axios headers
-    // Always ensure token has Bearer prefix
-    const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-    axiosInstance.defaults.headers.common['Authorization'] = authHeader;
+    axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${tokenData.token}`;
     
-    return token;
+    return tokenData.token;
   } catch (error) {
     console.error('Error getting token:', error);
     return null;
@@ -379,81 +372,11 @@ export const apiService = {
   // Get current user profile - Use the new user profile endpoint instead of auth/me
   getCurrentUser: async (): Promise<UserProfile> => {
     try {
-      // First try to get token explicitly and ensure it's set
-      const token = await AsyncStorage.getItem('auth_token');
-      if (!token) {
-        console.log('getCurrentUser: No token found in AsyncStorage');
-        throw new Error('No authentication token found');
-      }
-      
-      // Ensure token is set in headers with correct format
-      const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-      axiosInstance.defaults.headers.common['Authorization'] = authHeader;
-      console.log('getCurrentUser: Token set in headers');
-      
-      // Create a timeout promise
-      const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 8000)
-      );
-      
-      // Use auth/me endpoint as a backup if the users/profile endpoint fails
-      const primaryRequest = async () => {
-        try {
-          console.log('getCurrentUser: Sending request to /users/profile');
-          return await axiosInstance.get('/users/profile');
-        } catch (profileError) {
-          console.log('getCurrentUser: /users/profile failed, trying /auth/me instead');
-          return await axiosInstance.get('/auth/me');
-        }
-      };
-      
-      // Race the actual request against the timeout
-      const responsePromise = primaryRequest();
-      
-      // Use Promise.race to implement timeout
-      const response = await Promise.race([responsePromise, timeoutPromise]) as AxiosResponse;
-      
-      console.log('getCurrentUser: Response received:', response.status);
-      
-      if (!response.data?.data?.user) {
-        console.error('getCurrentUser: Invalid response format:', response.data);
-        throw new Error('Invalid user profile data');
-      }
-      
-      // Cache the user data
-      await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(response.data.data.user));
-      console.log('getCurrentUser: User data cached in storage');
-      
+      const response = await axiosInstance.get('/users/profile');
       return response.data.data.user;
     } catch (error) {
       console.error('Error fetching user profile:', error);
-      
-      // If the error is a timeout, provide a more specific error
-      if (error instanceof Error && error.message === 'Profile fetch timeout') {
-        console.log('getCurrentUser: Request timed out, using cached data');
-        throw new Error('User profile fetch timed out. Please try again later.');
-      }
-      
-      // Try to get user data from AsyncStorage as fallback
-      try {
-        const storedUserData = await AsyncStorage.getItem(USER_DATA_KEY);
-        if (storedUserData) {
-          console.log('getCurrentUser: Using cached user profile data');
-          return JSON.parse(storedUserData) as UserProfile;
-        }
-      } catch (storageError) {
-        console.error('Failed to get stored user data:', storageError);
-      }
-      
-      // Create dummy user if all else fails
-      console.log('getCurrentUser: No cached data found, creating fallback user');
-      const fallbackUser = {
-        id: 'temp-id',
-        name: 'User',
-        email: 'user@example.com'
-      };
-      
-      return fallbackUser;
+      throw error;
     }
   }
 };

@@ -2,7 +2,7 @@ import api from './api';
 import { saveSecurely, deleteSecurely } from '../utils/secureStorage';
 
 // User registration
-export const register = async (userData) => {
+const register = async (userData) => {
   try {
     const response = await api.post('/auth/signup', userData);
     
@@ -41,7 +41,7 @@ export const register = async (userData) => {
 };
 
 // User login
-export const login = async (credentials) => {
+const login = async (credentials) => {
   try {
     const response = await api.post('/auth/login', credentials);
     
@@ -60,7 +60,7 @@ export const login = async (credentials) => {
 };
 
 // User logout
-export const logout = async () => {
+const logout = async () => {
   try {
     // Delete token from secure storage
     await deleteSecurely('auth_token');
@@ -69,4 +69,119 @@ export const logout = async () => {
     console.error('Logout error:', error);
     return false;
   }
+};
+
+// Password reset functions
+const forgotPassword = async (email) => {
+  try {
+    const response = await api.post('/auth/forgot-password', { email });
+    
+    if (!response.data) {
+      throw new Error('No response from server');
+    }
+    
+    return {
+      success: true,
+      userId: response.data.data.userId,
+      email: response.data.data.email,
+      message: response.data.message
+    };
+  } catch (error) {
+    if (error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    } else if (error.message) {
+      throw new Error(error.message);
+    } else {
+      throw new Error('Failed to process password reset request. Please try again.');
+    }
+  }
+};
+
+const verifyOTP = async ({ userId, otp }) => {
+  try {
+    const response = await api.post('/auth/verify-otp', {
+      userId,
+      otp
+    });
+    
+    if (!response.data) {
+      throw new Error('No response from server');
+    }
+    
+    return {
+      success: true,
+      message: response.data.message
+    };
+  } catch (error) {
+    if (error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    } else if (error.message) {
+      throw new Error(error.message);
+    } else {
+      throw new Error('Failed to verify OTP. Please try again.');
+    }
+  }
+};
+
+const verifyResetOTP = async ({ userId, otp }) => {
+  try {
+    const response = await api.post('/auth/verify-reset-otp', {
+      userId,
+      otp
+    });
+    
+    if (!response.data) {
+      throw new Error('No response from server');
+    }
+    
+    return {
+      success: true,
+      message: response.data.message
+    };
+  } catch (error) {
+    if (error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    } else if (error.message) {
+      throw new Error(error.message);
+    } else {
+      throw new Error('Failed to verify OTP. Please try again.');
+    }
+  }
+};
+
+const resetPassword = async ({ userId, otp, newPassword }) => {
+  try {
+    const response = await api.post('/auth/reset-password', {
+      userId,
+      otp,
+      newPassword
+    });
+    
+    if (!response.data) {
+      throw new Error('No response from server');
+    }
+    
+    return {
+      success: true,
+      message: response.data.message
+    };
+  } catch (error) {
+    if (error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    } else if (error.message) {
+      throw new Error(error.message);
+    } else {
+      throw new Error('Failed to reset password. Please try again.');
+    }
+  }
+};
+
+export const authService = {
+  register,
+  login,
+  logout,
+  forgotPassword,
+  verifyOTP,
+  verifyResetOTP,
+  resetPassword
 }; 

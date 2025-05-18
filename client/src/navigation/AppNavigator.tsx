@@ -23,6 +23,8 @@ import OnboardingCurrencyScreen from '../screens/OnboardingCurrencyScreen';
 import OnboardingIncomeScreen from '../screens/OnboardingIncomeScreen';
 import OnboardingBudgetScreen from '../screens/OnboardingBudgetScreen';
 import OTPVerificationScreen from '../screens/OTPVerificationScreen';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 
 // Define navigation types
 export type RootStackParamList = {
@@ -48,6 +50,8 @@ export type RootStackParamList = {
   OnboardingCurrency: undefined;
   OnboardingIncome: undefined;
   OnboardingBudget: undefined;
+  ForgotPassword: undefined;
+  ResetPassword: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -146,6 +150,20 @@ const AppNavigator = observer(() => {
         <Stack.Screen name="OnboardingCurrency" component={OnboardingCurrencyScreen} />
         <Stack.Screen name="OnboardingIncome" component={OnboardingIncomeScreen} />
         <Stack.Screen name="OnboardingBudget" component={OnboardingBudgetScreen} />
+        <Stack.Screen
+          name="ForgotPassword"
+          component={ForgotPasswordScreen}
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="ResetPassword"
+          component={ResetPasswordScreen}
+          options={{
+            headerShown: false,
+          }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -19,7 +19,7 @@ import { theme } from '../theme';
 import AppHeader from '../components/AppHeader';
 import BottomNavBar from '../components/BottomNavBar';
 import { authViewModel } from '../viewmodels/authViewModel';
-import { authService, apiService } from '../services/apiService';
+import { authService } from '../services/apiService';
 import MessageDialog from '../components/MessageDialog';
 import { ScreenName } from '../components/BottomNavBar';
 import api from '../api/api';
@@ -73,14 +73,6 @@ const HomeScreen = observer(() => {
           // Ensure token has Bearer prefix
           const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
           api.defaults.headers.common['Authorization'] = authHeader;
-          
-          // Also explicitly set it for axios instance in apiService
-          try {
-            await authService.setToken(token);
-            console.log('HomeScreen: Token also set in apiService');
-          } catch (err) {
-            console.warn('HomeScreen: Failed to set token in apiService:', err);
-          }
         } else {
           console.warn('HomeScreen: No token found in AsyncStorage');
         }
@@ -94,20 +86,6 @@ const HomeScreen = observer(() => {
       // Only fetch data if authenticated
       if (isAuthenticated) {
         console.log('HomeScreen: User is authenticated, fetching data...');
-        
-        // Try to fetch user profile data once to update it
-        try {
-          const userData = await apiService.getCurrentUser();
-          console.log('HomeScreen: Successfully loaded fresh user profile');
-          runInAction(() => {
-            authViewModel.userId = userData.id;
-            authViewModel.userName = userData.name;
-            authViewModel.email = userData.email;
-          });
-        } catch (profileErr) {
-          console.warn('HomeScreen: Could not fetch fresh profile, using stored data:', profileErr);
-        }
-        
         await fetchAllData();
       } else {
         console.log('HomeScreen: User is not authenticated, stopping initialization');
@@ -203,40 +181,9 @@ const HomeScreen = observer(() => {
     }
   };
 
-  const refreshAuthToken = async () => {
-    try {
-      console.log('HomeScreen: Attempting to refresh auth token');
-      
-      // Get raw token from AsyncStorage
-      const token = await AsyncStorage.getItem('auth_token');
-      if (!token) {
-        console.log('HomeScreen: No token found during refresh attempt');
-        return false;
-      }
-      
-      // Ensure token format is correct and set it in both API instances
-      const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-      
-      // Set in the main api instance
-      api.defaults.headers.common['Authorization'] = authHeader;
-      
-      // Also set it in the apiService's axios instance
-      await authService.setToken(token);
-      
-      console.log('HomeScreen: Auth token refreshed in all API instances');
-      return true;
-    } catch (error) {
-      console.error('HomeScreen: Error refreshing auth token:', error);
-      return false;
-    }
-  };
-
   const fetchAllData = async () => {
     setLoading(true);
     try {
-      // First refresh the auth token to ensure it's valid
-      await refreshAuthToken();
-      
       // Create timeout promises for each fetch operation
       const timeoutDuration = 5000; // 5 seconds timeout
       const createTimeoutPromise = () => 
@@ -397,22 +344,6 @@ const HomeScreen = observer(() => {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      // Refresh auth token first
-      await refreshAuthToken();
-      
-      // Try to fetch user profile again
-      try {
-        const userData = await apiService.getCurrentUser();
-        console.log('HomeScreen: Refreshed user profile data');
-        runInAction(() => {
-          authViewModel.userId = userData.id;
-          authViewModel.userName = userData.name;
-          authViewModel.email = userData.email;
-        });
-      } catch (profileErr) {
-        console.warn('HomeScreen: Could not refresh profile:', profileErr);
-      }
-      
       await fetchAllData();
     } catch (error) {
       console.error('Error refreshing data:', error);

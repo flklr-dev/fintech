@@ -8,7 +8,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 3000, // Reduce timeout to 3 seconds
+  timeout: 5000, // 5 seconds timeout
 });
 
 // Add a request interceptor to include auth token
@@ -31,27 +31,10 @@ api.interceptors.request.use(
       
       // If token exists, add it to the request headers
       if (token) {
-        // Always ensure 'Bearer ' prefix is present for consistent format
-        const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-        config.headers.Authorization = authHeader;
-        
-        // Add extra logging for user profile requests
-        if (config.url && config.url.includes('/users/profile')) {
-          console.log('Adding token to user profile request:', authHeader.substring(0, 15) + '...');
-        } else {
-          console.log('Adding token to request:', config.url);
-        }
+        config.headers.Authorization = `Bearer ${token}`;
+        console.log('Adding token to request:', config.url);
       } else {
         console.log('No token available for request:', config.url);
-      }
-      
-      // Increase timeout for transaction-related endpoints
-      if (config.url && (
-        config.url.includes('/transactions') || 
-        config.url.includes('/budgets') || 
-        config.url.includes('/users/profile')
-      )) {
-        config.timeout = 10000; // 10 seconds for data-heavy endpoints
       }
       
       console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
@@ -76,11 +59,6 @@ api.interceptors.response.use(
   },
   async (error) => {
     const originalRequest = error.config;
-    
-    // Check if this is a timeout error
-    if (error.code === 'ECONNABORTED' && error.message && error.message.includes('timeout')) {
-      console.error(`API Timeout: ${originalRequest.method?.toUpperCase()} ${originalRequest.url} exceeded ${originalRequest.timeout}ms`);
-    }
     
     // If 401 response and not already retrying, attempt to refresh token or log out
     if (error.response && error.response.status === 401 && !originalRequest._retry) {
@@ -125,12 +103,9 @@ api.interceptors.response.use(
 const setAuthToken = (token) => {
   if (token) {
     console.log('Setting auth token in api instance');
-    // Always ensure 'Bearer ' prefix is present for consistent format
-    const authHeader = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-    api.defaults.headers.common['Authorization'] = authHeader;
-    // Also store in AsyncStorage - plain token (without prefix)
-    const plainToken = token.startsWith('Bearer ') ? token.substring(7) : token;
-    AsyncStorage.setItem('auth_token', plainToken)
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    // Also store in AsyncStorage - plain token
+    AsyncStorage.setItem('auth_token', token)
       .then(() => console.log('Token stored in AsyncStorage'))
       .catch(err => console.error('Failed to store token:', err));
   } else {
