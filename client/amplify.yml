@@ -4,7 +4,7 @@ frontend:
     preBuild:
       commands:
         - npm install -g npm@10.8.2
-        - npm install --legacy-peer-deps --force
+        - npm install --legacy-peer-deps
     build:
       commands:
         - echo "GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID" >> .env
