@@ -1,0 +1,68 @@
+{
+  "family": "fintech-server",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::737416203480:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "fintech-server",
+      "image": "737416203480.dkr.ecr.ap-southeast-1.amazonaws.com/fintech-server:latest",
+      "portMappings": [
+        {
+          "containerPort": 5000,
+          "protocol": "tcp",
+          "hostPort": 5000
+        }
+      ],
+      "environment": [
+        {
+          "name": "NODE_ENV",
+          "value": "production"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "MONGODB_URI",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:737416203480:parameter/fintech/MONGODB_URI"
+        },
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:737416203480:parameter/fintech/JWT_SECRET"
+        },
+        {
+          "name": "EMAIL_USER",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:737416203480:parameter/fintech/EMAIL_USER"
+        },
+        {
+          "name": "EMAIL_PASSWORD",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:737416203480:parameter/fintech/EMAIL_PASSWORD"
+        },
+        {
+          "name": "FIREBASE_CLIENT_EMAIL",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:737416203480:parameter/fintech/FIREBASE_CLIENT_EMAIL"
+        },
+        {
+          "name": "FIREBASE_PRIVATE_KEY",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:737416203480:parameter/fintech/FIREBASE_PRIVATE_KEY"
+        }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:5000/api/v1/health || exit 1"],
+        "interval": 60,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/fintech-server",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+} 

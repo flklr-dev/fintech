@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const config = require('./config/config');
+const corsOptions = require('./config/cors');
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const transactionRoutes = require('./routes/transactionRoutes');
@@ -31,8 +32,16 @@ app.use('/api', rateLimiter);
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// Enable CORS
-app.use(cors());
+// Enable CORS with configuration
+app.use(cors(corsOptions));
+
+// Health check endpoint
+app.get('/api/v1/health', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'Server is healthy'
+  });
+});
 
 // Routes
 app.use('/api/v1/auth', authRoutes);

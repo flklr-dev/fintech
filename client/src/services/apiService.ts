@@ -1,6 +1,7 @@
 import axios, { AxiosError, AxiosInstance, AxiosResponse } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { saveSecurely, getSecurely, deleteSecurely } from '../utils/secureStorage';
+import { API_URL } from '@env';
 
 // Types
 export interface LoginRequest {
@@ -45,7 +46,7 @@ const DEFAULT_TOKEN_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 // Create axios instance
 const axiosInstance: AxiosInstance = axios.create({
-  baseURL: 'http://192.168.1.118:5000/api/v1', // Update to match server's route pattern
+  baseURL: API_URL || 'http://localhost:5000/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },

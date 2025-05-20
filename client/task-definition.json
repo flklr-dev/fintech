@@ -1,0 +1,56 @@
+{
+  "family": "fintech-client",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::737416203480:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::737416203480:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "fintech-client",
+      "image": "737416203480.dkr.ecr.ap-southeast-1.amazonaws.com/fintech-client:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp",
+          "hostPort": 3000
+        }
+      ],
+      "environment": [
+        {
+          "name": "NODE_ENV",
+          "value": "production"
+        },
+        {
+          "name": "GOOGLE_WEB_CLIENT_ID",
+          "value": "816779798174-1431kc4pg7opl4m8jc4u7pmt66q1brmb.apps.googleusercontent.com"
+        },
+        {
+          "name": "GOOGLE_ANDROID_CLIENT_ID",
+          "value": "816779798174-d1fn4e5vdpi4hjqovgusnd7qhavloimf.apps.googleusercontent.com"
+        },
+        {
+          "name": "GOOGLE_IOS_CLIENT_ID",
+          "value": "816779798174-7njrlf8e8lh5fba07ut5ucndehqj64o6.apps.googleusercontent.com"
+        }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"],
+        "interval": 60,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 120
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/fintech-client",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+} 
