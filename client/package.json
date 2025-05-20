@@ -2,12 +2,16 @@
   "name": "client",
   "version": "1.0.0",
   "main": "index.ts",
+  "engines": {
+    "node": "18.x",
+    "npm": "10.x"
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "build": "npx expo export --platform web"
+    "build": "expo export:web"
   },
   "dependencies": {
     "@aws-amplify/cli": "^13.0.1",
@@ -21,10 +25,10 @@
     "@react-native-firebase/auth": "^22.0.0",
     "@react-native-google-signin/google-signin": "^13.2.0",
     "@react-native-picker/picker": "^2.11.0",
-    "@react-navigation/bottom-tabs": "^6.5.11",
-    "@react-navigation/native": "^6.1.9",
-    "@react-navigation/native-stack": "^6.9.17",
-    "@react-navigation/stack": "^6.3.20",
+    "@react-navigation/bottom-tabs": "6.5.11",
+    "@react-navigation/native": "6.1.9",
+    "@react-navigation/native-stack": "6.9.17",
+    "@react-navigation/stack": "6.3.20",
     "amazon-cognito-identity-js": "^6.3.15",
     "aws-amplify": "^6.14.4",
     "axios": "^1.9.0",
