@@ -33,7 +33,14 @@
       "favicon": "./assets/fintech-logo3.png"
     },
     "plugins": [
-      "@react-native-google-signin/google-signin"
-    ]
+      "@react-native-google-signin/google-signin",
+      "expo-build-properties",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "51b80ce8-9945-4ff4-990d-c7ef26c48190"
+      }
+    }
   }
 }

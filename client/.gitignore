@@ -74,6 +74,8 @@ coverage/
 *.swo
 
 # Android/IntelliJ
+# Ignore entire Android directory (builds, wrapper, gradle files)
+android/
 android/app/debug
 android/app/release
 .idea

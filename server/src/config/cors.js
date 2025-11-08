@@ -1,14 +1,9 @@
 const corsOptions = {
-  origin: [
-    'http://13.212.176.39:3000',
-    'http://localhost:3000',
-    'http://localhost:19006', // Expo development server
-    /\.ap-southeast-1\.compute\.amazonaws\.com$/ // Allow all EC2 domains
-  ],
+  origin: '*', // Allow all origins
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   credentials: true,
-  maxAge: 86400 // 24 hours
+  maxAge: 86400
 };
 
 module.exports = corsOptions; 

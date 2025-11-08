@@ -46,7 +46,7 @@ const DEFAULT_TOKEN_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 // Create axios instance
 const axiosInstance: AxiosInstance = axios.create({
-  baseURL: API_URL || 'http://localhost:5000/api/v1',
+  baseURL: API_URL || 'http://52.221.253.61:5000/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },

@@ -1,0 +1,44 @@
+# Server .gitignore (Node)
+
+# Node
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+
+# Env / secrets
+.env
+.env.*
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Test
+coverage/
+nyc_output/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Certificates / keys
+*.pem
+*.key
+
+# Misc
+npm-debug.log*
+
+# End of server .gitignore
